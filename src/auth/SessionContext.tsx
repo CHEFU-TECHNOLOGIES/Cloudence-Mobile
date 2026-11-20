@@ -50,10 +50,7 @@ const SessionContext = createContext<SessionContextValue | null>(null);
 WebBrowser.maybeCompleteAuthSession();
 
 async function loadCurrentUser(accessToken: string): Promise<CloudenceUser> {
-  const result = await apiRequest<unknown>(
-    "/oauth/userinfo",
-    accessToken,
-  );
+  const result = await apiRequest<unknown>("/oauth/userinfo", accessToken);
   if (typeof result !== "object" || result === null) {
     throw new Error("The account response was invalid.");
   }
@@ -90,8 +87,12 @@ function getErrorMessage(error: unknown) {
 }
 
 function isInvalidRefreshToken(error: unknown) {
-  return error instanceof AuthSession.TokenError &&
-    ["invalid_grant", "invalid_client", "unauthorized_client"].includes(error.code);
+  return (
+    error instanceof AuthSession.TokenError &&
+    ["invalid_grant", "invalid_client", "unauthorized_client"].includes(
+      error.code,
+    )
+  );
 }
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
@@ -236,11 +237,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       if (result.type !== "success") return;
 
       const code = result.params.code;
-      if (
-        result.params.state !== state ||
-        !code ||
-        !request.codeVerifier
-      ) {
+      if (result.params.state !== state || !code || !request.codeVerifier) {
         throw new Error("Sign-in validation failed. Please try again.");
       }
 
@@ -268,6 +265,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           ? signInError.message
           : "Unable to sign in. Please try again.",
       );
+      throw signInError;
     } finally {
       signInPendingRef.current = false;
       setIsSigningIn(false);
@@ -301,7 +299,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           throw new Error("Your session changed. Sign in again.");
         }
         const currentUser =
-          user ?? refreshed.user ?? (await loadCurrentUser(refreshed.accessToken));
+          user ??
+          refreshed.user ??
+          (await loadCurrentUser(refreshed.accessToken));
         if (tokensRef.current !== currentTokens) {
           const latestTokens = tokensRef.current;
           if (latestTokens && !tokenNeedsRefresh(latestTokens)) {

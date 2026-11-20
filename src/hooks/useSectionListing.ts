@@ -12,6 +12,7 @@ import {
 } from "../lib/cache/metadataCache";
 import { useSession } from "../auth/SessionContext";
 import { useCloudenceData } from "../data/CloudenceDataProvider";
+import { useToast } from "../components/cloudence/ToastProvider";
 
 const EMPTY_LISTING: SectionListing = {
   files: [],
@@ -74,10 +75,9 @@ export function useSectionListing(
 ) {
   const { user, getAccessToken } = useSession();
   const { isOffline } = useCloudenceData();
+  const { showToast } = useToast();
   const userId = user?.id ?? null;
-  const cacheKey = section
-    ? `section:${section}:${folderId ?? "root"}`
-    : "";
+  const cacheKey = section ? `section:${section}:${folderId ?? "root"}` : "";
   const stateKey = userId && cacheKey ? `${userId}:${cacheKey}` : "";
   const [storedKey, setStoredKey] = useState("");
   const [listing, setListing] = useState<SectionListing>(EMPTY_LISTING);
@@ -86,34 +86,34 @@ export function useSectionListing(
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
-  const requestRef = useRef<Promise<void> | null>(null);
+  const requestRef = useRef<Promise<boolean> | null>(null);
   const storedKeyRef = useRef("");
   const hasListingRef = useRef(false);
   const loadingMoreRef = useRef(false);
 
   const load = useCallback(
     async (force = false, signal?: AbortSignal) => {
-      if (!section || !userId || !cacheKey) return;
+      if (!section || !userId || !cacheKey) return false;
       if (requestRef.current) return requestRef.current;
 
-      const request = (async () => {
+      const request = (async (): Promise<boolean> => {
         try {
           if (!force) {
             const cached = await readMetadataCache(userId, cacheKey);
-            if (signal?.aborted) return;
+            if (signal?.aborted) return true;
             if (cached && isCachedListing(cached.payload)) {
               storedKeyRef.current = stateKey;
               hasListingRef.current = true;
               setStoredKey(stateKey);
               setListing(cached.payload);
               setError(null);
-              return;
+              return true;
             }
           }
 
           if (isOffline) {
             setError(null);
-            return;
+            return false;
           }
 
           if (storedKeyRef.current !== stateKey || !hasListingRef.current) {
@@ -128,7 +128,7 @@ export function useSectionListing(
             0,
             signal,
           );
-          if (signal?.aborted) return;
+          if (signal?.aborted) return true;
 
           storedKeyRef.current = stateKey;
           hasListingRef.current = true;
@@ -140,6 +140,7 @@ export function useSectionListing(
             cacheKey,
             withoutSignedUrls(nextListing),
           );
+          return true;
         } catch (loadError) {
           if (!signal?.aborted) {
             setError(
@@ -148,6 +149,7 @@ export function useSectionListing(
                 : "Unable to load this folder.",
             );
           }
+          return false;
         } finally {
           if (!signal?.aborted) {
             setIsLoading(false);
@@ -158,20 +160,12 @@ export function useSectionListing(
 
       requestRef.current = request;
       try {
-        await request;
+        return await request;
       } finally {
         if (requestRef.current === request) requestRef.current = null;
       }
     },
-    [
-      cacheKey,
-      folderId,
-      getAccessToken,
-      isOffline,
-      section,
-      stateKey,
-      userId,
-    ],
+    [cacheKey, folderId, getAccessToken, isOffline, section, stateKey, userId],
   );
 
   useEffect(() => {
@@ -186,6 +180,14 @@ export function useSectionListing(
   }, [load]);
 
   const loadMore = useCallback(async () => {
+    if (isOffline && section && folderId && listing.nextOffset !== undefined) {
+      showToast({
+        title: "You're offline",
+        message: "Reconnect to load more files.",
+        variant: "error",
+      });
+      return;
+    }
     if (
       !section ||
       !folderId ||
@@ -220,18 +222,19 @@ export function useSectionListing(
       };
       setListing(combined);
       setError(null);
-      await writeMetadataCache(
-        userId,
-        cacheKey,
-        withoutSignedUrls(combined),
-      );
+      await writeMetadataCache(userId, cacheKey, withoutSignedUrls(combined));
     } catch (loadError) {
       if (!controller.signal.aborted) {
-        setError(
+        const message =
           loadError instanceof Error
             ? loadError.message
-            : "Unable to load more files.",
-        );
+            : "Unable to load more files.";
+        setError(message);
+        showToast({
+          title: "Could not load more files",
+          message,
+          variant: "error",
+        });
       }
     } finally {
       loadingMoreRef.current = false;
@@ -245,6 +248,7 @@ export function useSectionListing(
     isOffline,
     listing,
     section,
+    showToast,
     userId,
   ]);
 

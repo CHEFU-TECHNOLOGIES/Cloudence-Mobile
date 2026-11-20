@@ -1,6 +1,4 @@
-import React from "react";
-import { View, Text, StyleSheet } from "react-native";
-import Svg, { Rect } from "react-native-svg";
+import { StyleSheet, Text, View } from "react-native";
 import { theme } from "../../constants/theme";
 
 type Props = {
@@ -14,35 +12,13 @@ type Props = {
 
 export default function CloudenceLogo({
     size = 36,
-    color = theme.colors.brand,
     showText = false,
     textSize = 19,
     textColor = theme.colors.text,
     badge,
 }: Props) {
-    const height = size;
-    const width = (size * 83) / 82;
-
     return (
         <View style={styles.container}>
-            <Svg width={width} height={height} viewBox="0 0 83 82" fill="none">
-                <Rect
-                    opacity={0.25}
-                    width={74.8323}
-                    height={74.8323}
-                    rx={37.4161}
-                    fill={color}
-                />
-                <Rect
-                    x={32.7383}
-                    y={31.1797}
-                    width={49.8882}
-                    height={49.8882}
-                    rx={24.9441}
-                    fill={color}
-                />
-            </Svg>
-
             {showText && (
                 <View style={styles.textContainer}>
                     <View style={styles.titleRow}>

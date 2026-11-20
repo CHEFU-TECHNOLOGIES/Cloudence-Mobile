@@ -15,6 +15,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { FileText, Upload, X } from "lucide-react-native";
 import { theme } from "../../constants/theme";
 import { convertFileSize } from "../../utils/fileUtils";
+import { useToast } from "./ToastProvider";
 
 type Props = {
   visible: boolean;
@@ -28,7 +29,9 @@ type Props = {
 };
 
 function messageFromError(error: unknown) {
-  return error instanceof Error ? error.message : "The file could not be uploaded.";
+  return error instanceof Error
+    ? error.message
+    : "The file could not be uploaded.";
 }
 
 export default function FileUploadModal({
@@ -39,6 +42,7 @@ export default function FileUploadModal({
   onCancelUpload,
 }: Props) {
   const { width, height } = useWindowDimensions();
+  const { showToast } = useToast();
   const [selectedFile, setSelectedFile] =
     useState<DocumentPicker.DocumentPickerAsset | null>(null);
   const [fileName, setFileName] = useState("");
@@ -60,14 +64,18 @@ export default function FileUploadModal({
       setSelectedFile(asset);
       setFileName("");
     } catch (pickerError) {
-      setError(messageFromError(pickerError));
+      const message = messageFromError(pickerError);
+      setError(message);
+      showToast({ title: "Could not choose file", message, variant: "error" });
     }
   };
 
   const handleUpload = async () => {
     if (uploadingRef.current) return;
     if (!selectedFile) {
-      setError("Choose a file before uploading.");
+      const message = "Choose a file before uploading.";
+      setError(message);
+      showToast({ title: "No file selected", message, variant: "error" });
       return;
     }
 
@@ -80,11 +88,15 @@ export default function FileUploadModal({
       setFileName("");
       onClose();
     } catch (uploadError) {
-      setError(
-        uploadError instanceof Error && uploadError.name === "AbortError"
-          ? "Upload cancelled."
-          : messageFromError(uploadError),
-      );
+      const cancelled =
+        uploadError instanceof Error && uploadError.name === "AbortError";
+      const message = cancelled
+        ? "Upload cancelled."
+        : messageFromError(uploadError);
+      setError(message);
+      if (!cancelled) {
+        showToast({ title: "Upload failed", message, variant: "error" });
+      }
     } finally {
       uploadingRef.current = false;
       setUploading(false);
@@ -99,12 +111,7 @@ export default function FileUploadModal({
       onRequestClose={onClose}
     >
       <TouchableWithoutFeedback onPress={uploading ? undefined : onClose}>
-        <View
-          style={[
-            styles.overlay,
-            width >= 600 && styles.tabletOverlay,
-          ]}
-        >
+        <View style={[styles.overlay, width >= 600 && styles.tabletOverlay]}>
           <TouchableWithoutFeedback>
             <View
               style={[

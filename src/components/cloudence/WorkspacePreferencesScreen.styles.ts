@@ -1,0 +1,87 @@
+import { StyleSheet } from "react-native";
+import { theme } from "../../constants/theme";
+
+export const workspacePreferencesStyles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: theme.colors.background },
+  scroll: { flex: 1 },
+  content: { paddingTop: 12, paddingBottom: 40 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 24,
+  },
+  backButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+  },
+  headerCopy: { flex: 1 },
+  title: {
+    color: theme.colors.text,
+    fontSize: 23,
+    fontWeight: "800",
+    letterSpacing: -0.5,
+  },
+  subtitle: {
+    color: theme.colors.secondaryText,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 3,
+  },
+  sectionTitle: {
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: "800",
+    marginBottom: 5,
+  },
+  sectionSubtitle: {
+    color: theme.colors.secondaryText,
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 14,
+  },
+  card: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.lg,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    marginBottom: 22,
+  },
+  optionTitle: { color: theme.colors.text, fontSize: 14, fontWeight: "700" },
+  optionDescription: {
+    color: theme.colors.secondaryText,
+    fontSize: 11.5,
+    lineHeight: 17,
+    marginTop: 4,
+  },
+  segmented: {
+    flexDirection: "row",
+    backgroundColor: theme.colors.surfaceSubtle,
+    padding: 4,
+    borderRadius: theme.radius.md,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.borderSubtle,
+  },
+  segment: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  segmentSelected: { backgroundColor: theme.colors.brand },
+  segmentText: {
+    color: theme.colors.secondaryText,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  segmentTextSelected: { color: "#FFFFFF" },
+});

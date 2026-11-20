@@ -1,0 +1,97 @@
+import { StyleSheet } from "react-native";
+import { theme } from "../../constants/theme";
+
+export const notificationsSettingsStyles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: theme.colors.background },
+  scroll: { flex: 1 },
+  content: { paddingTop: 12, paddingBottom: 40 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 26,
+  },
+  backButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+  },
+  headerCopy: { flex: 1 },
+  title: {
+    color: theme.colors.text,
+    fontSize: 23,
+    fontWeight: "800",
+    letterSpacing: -0.5,
+  },
+  subtitle: {
+    color: theme.colors.secondaryText,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 3,
+  },
+  sectionTitle: {
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: "800",
+    marginBottom: 5,
+  },
+  sectionSubtitle: {
+    color: theme.colors.secondaryText,
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 14,
+  },
+  card: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.lg,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    marginBottom: 20,
+  },
+  row: {
+    minHeight: 80,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    paddingVertical: 14,
+  },
+  rowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderSubtle,
+  },
+  rowCopy: { flex: 1 },
+  rowTitle: { color: theme.colors.text, fontSize: 13.5, fontWeight: "700" },
+  rowDescription: {
+    color: theme.colors.secondaryText,
+    fontSize: 11.5,
+    lineHeight: 17,
+    marginTop: 4,
+  },
+  switchTrack: {
+    width: 48,
+    height: 28,
+    borderRadius: 14,
+    padding: 3,
+    justifyContent: "center",
+  },
+  switchThumb: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#FFFFFF",
+  },
+  switchOn: { alignSelf: "flex-end" },
+  note: {
+    color: theme.colors.secondaryText,
+    fontSize: 11,
+    lineHeight: 17,
+    marginTop: 0,
+    marginBottom: 12,
+  },
+});

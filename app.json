@@ -1,51 +1,60 @@
 {
-    "expo": {
-        "name": "Cloudence",
-        "slug": "cloudence",
-        "version": "1.0.0",
-        "orientation": "portrait",
-        "icon": "./assets/images/icon.png",
-        "scheme": "cloudence",
-        "userInterfaceStyle": "automatic",
-        "ios": {
-            "icon": "./assets/expo.icon"
-        },
-        "android": {
-            "adaptiveIcon": {
-                "backgroundColor": "#E6F4FE",
-                "foregroundImage": "./assets/images/android-icon-foreground.png",
-                "backgroundImage": "./assets/images/android-icon-background.png",
-                "monochromeImage": "./assets/images/android-icon-monochrome.png"
-            },
-            "predictiveBackGestureEnabled": false,
-            "package": "za.co.chefu.cloudence"
-        },
-        "web": {
-            "output": "static",
-            "favicon": "./assets/images/favicon.png"
-        },
-        "plugins": [
-            "expo-router",
-            [
-                "expo-splash-screen",
-                {
-                    "backgroundColor": "#208AEF",
-                    "image": "./assets/images/splash-icon.png",
-                    "imageWidth": 76
-                }
-            ],
-            "expo-secure-store",
-            "expo-sharing",
-            [
-                "expo-sqlite",
-                {
-                    "useSQLCipher": true
-                }
-            ]
-        ],
-        "experiments": {
-            "typedRoutes": true,
-            "reactCompiler": true
+  "expo": {
+    "name": "Cloudence",
+    "slug": "cloudence",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/cloudence-favicon.png",
+    "scheme": "cloudence",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "icon": "./assets/images/cloudence-favicon.png"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#008080",
+        "foregroundImage": "./assets/images/cloudence-favicon.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "za.co.chefu.cloudence",
+      "versionCode": 1
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#008080",
+          "image": "./assets/images/cloudence-favicon.png",
+          "imageWidth": 160
         }
+      ],
+      "expo-secure-store",
+      "expo-sharing",
+      [
+        "expo-sqlite",
+        {
+          "useSQLCipher": true
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "0fa2688a-a97e-4acb-85b5-9493f25e8c56"
+      }
     }
+  }
 }

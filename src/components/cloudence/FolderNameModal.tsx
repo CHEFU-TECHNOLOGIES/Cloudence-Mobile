@@ -11,6 +11,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { theme } from "../../constants/theme";
+import { useToast } from "./ToastProvider";
 
 type Props = {
   visible: boolean;
@@ -20,6 +21,7 @@ type Props = {
 
 export default function FolderNameModal({ visible, onClose, onCreate }: Props) {
   const { width, height } = useWindowDimensions();
+  const { showToast } = useToast();
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +36,9 @@ export default function FolderNameModal({ visible, onClose, onCreate }: Props) {
   const handleCreate = async () => {
     if (saving) return;
     if (!name.trim()) {
-      setError("Enter a folder name.");
+      const message = "Enter a folder name.";
+      setError(message);
+      showToast({ title: "Folder name required", message, variant: "error" });
       return;
     }
 
@@ -44,11 +48,12 @@ export default function FolderNameModal({ visible, onClose, onCreate }: Props) {
       await onCreate(name.trim());
       onClose();
     } catch (createError) {
-      setError(
+      const message =
         createError instanceof Error
           ? createError.message
-          : "The folder could not be created.",
-      );
+          : "The folder could not be created.";
+      setError(message);
+      showToast({ title: "Folder creation failed", message, variant: "error" });
     } finally {
       setSaving(false);
     }
@@ -62,17 +67,15 @@ export default function FolderNameModal({ visible, onClose, onCreate }: Props) {
       onRequestClose={saving ? undefined : onClose}
     >
       <TouchableWithoutFeedback onPress={saving ? undefined : onClose}>
-        <View
-          style={[
-            styles.overlay,
-            width >= 600 && styles.tabletOverlay,
-          ]}
-        >
+        <View style={[styles.overlay, width >= 600 && styles.tabletOverlay]}>
           <TouchableWithoutFeedback>
             <View
               style={[
                 styles.sheet,
-                { width: width >= 600 ? 480 : "100%", maxHeight: height * 0.85 },
+                {
+                  width: width >= 600 ? 480 : "100%",
+                  maxHeight: height * 0.85,
+                },
               ]}
             >
               <Text style={styles.title}>Create folder</Text>
