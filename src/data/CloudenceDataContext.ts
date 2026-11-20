@@ -19,7 +19,11 @@ export type CloudenceDataContextValue = {
   refresh: () => Promise<boolean>;
   rename: (fileId: string, name: string) => Promise<void>;
   remove: (fileId: string) => Promise<void>;
-  share: (fileId: string, users: string[]) => Promise<void>;
+  share: (
+    fileId: string,
+    users: string[],
+    shareExpiresAt?: string | null,
+  ) => Promise<void>;
   upload: (
     asset: DocumentPicker.DocumentPickerAsset,
     name?: string,

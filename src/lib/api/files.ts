@@ -112,6 +112,8 @@ export function parseCloudFile(value: unknown): CloudFile {
       email: requiredString(value.owner.email, "an owner email"),
     },
     users,
+    shareExpiresAt:
+      typeof value.shareExpiresAt === "string" ? value.shareExpiresAt : undefined,
     url: typeof value.url === "string" ? value.url : undefined,
     folderId: typeof value.folderId === "string" ? value.folderId : undefined,
   };
@@ -189,6 +191,7 @@ export async function updateFileSharing(
   accessToken: string,
   fileId: string,
   users: string[],
+  shareExpiresAt?: string | null,
 ) {
   const updated = await apiRequest<unknown>(
     `/cloudence/files/${encodeURIComponent(fileId)}`,
@@ -196,7 +199,12 @@ export async function updateFileSharing(
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ users }),
+      body: JSON.stringify({
+        users,
+        ...(shareExpiresAt !== undefined
+          ? { shareExpiresAt: shareExpiresAt ?? "" }
+          : {}),
+      }),
     },
   );
   return parseCloudFile(updated);

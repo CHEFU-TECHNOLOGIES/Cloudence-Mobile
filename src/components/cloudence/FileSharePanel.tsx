@@ -7,15 +7,24 @@ import ConfirmDialog from "./ConfirmDialog";
 import { styles } from "./FileActionModal.styles";
 import { useToast } from "./ToastProvider";
 
+function expirationDate(days: number) {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
 type Props = {
   file: CloudFile;
   onClose: () => void;
-  onShare?: (fileId: string, emails: string[]) => void | Promise<void>;
+  onShare?: (
+    fileId: string,
+    emails: string[],
+    shareExpiresAt?: string | null,
+  ) => void | Promise<void>;
 };
 
 export default function FileSharePanel({ file, onClose, onShare }: Props) {
   const [emailInput, setEmailInput] = useState("");
   const [emailToRemove, setEmailToRemove] = useState<string | null>(null);
+  const [expirationSaving, setExpirationSaving] = useState(false);
   const { showToast } = useToast();
 
   const submitAccessUpdate = (emails: string[]) => {
@@ -61,6 +70,28 @@ export default function FileSharePanel({ file, onClose, onShare }: Props) {
     setEmailToRemove(null);
   };
 
+  const updateExpiration = async (days: number | null) => {
+    if (!onShare || expirationSaving) return;
+    const expiresAt = days === null ? null : expirationDate(days);
+    setExpirationSaving(true);
+    try {
+      await onShare(file.id, file.users, expiresAt);
+      showToast({
+        title: "Sharing updated",
+        message: days === null ? "Access will not expire." : `Access expires in ${days} days.`,
+        variant: "success",
+      });
+    } catch (error) {
+      showToast({
+        title: "Could not update expiration",
+        message: error instanceof Error ? error.message : "Please try again.",
+        variant: "error",
+      });
+    } finally {
+      setExpirationSaving(false);
+    }
+  };
+
   return (
     <>
       <View style={styles.subModalContent}>
@@ -68,6 +99,29 @@ export default function FileSharePanel({ file, onClose, onShare }: Props) {
         <Text style={styles.subModalDesc}>
           Grant access by email to collaborate on this file.
         </Text>
+
+        <Text style={styles.sharedSectionTitle}>Access expiration</Text>
+        <View style={styles.expirationOptions}>
+          {[
+            { label: "Never", days: null },
+            { label: "7 days", days: 7 },
+            { label: "30 days", days: 30 },
+          ].map((option) => (
+            <Pressable
+              key={option.label}
+              disabled={expirationSaving}
+              onPress={() => void updateExpiration(option.days)}
+              style={styles.expirationOption}
+            >
+              <Text style={styles.expirationOptionText}>{option.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+        {file.shareExpiresAt && (
+          <Text style={styles.expirationCurrent}>
+            Current expiry: {new Date(file.shareExpiresAt).toLocaleDateString()}
+          </Text>
+        )}
 
         <View style={styles.addEmailRow}>
           <TextInput

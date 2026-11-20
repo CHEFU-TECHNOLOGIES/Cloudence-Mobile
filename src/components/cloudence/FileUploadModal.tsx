@@ -6,7 +6,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableWithoutFeedback,
   View,
   useWindowDimensions,
@@ -14,8 +13,8 @@ import {
 import * as DocumentPicker from "expo-document-picker";
 import { FileText, Upload, X } from "lucide-react-native";
 import { theme } from "../../constants/theme";
-import { convertFileSize } from "../../utils/fileUtils";
 import { useToast } from "./ToastProvider";
+import UploadQueueList, { type UploadQueueItem } from "./UploadQueueList";
 
 type Props = {
   visible: boolean;
@@ -43,9 +42,7 @@ export default function FileUploadModal({
 }: Props) {
   const { width, height } = useWindowDimensions();
   const { showToast } = useToast();
-  const [selectedFile, setSelectedFile] =
-    useState<DocumentPicker.DocumentPickerAsset | null>(null);
-  const [fileName, setFileName] = useState("");
+  const [queue, setQueue] = useState<UploadQueueItem[]>([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const uploadingRef = useRef(false);
@@ -55,14 +52,25 @@ export default function FileUploadModal({
     try {
       const result = await DocumentPicker.getDocumentAsync({
         copyToCacheDirectory: true,
-        multiple: false,
+        multiple: true,
         type: "*/*",
       });
       if (result.canceled) return;
 
-      const asset = result.assets[0];
-      setSelectedFile(asset);
-      setFileName("");
+      setQueue((current) => {
+        const knownUris = new Set(current.map((item) => item.asset.uri));
+        return [
+          ...current,
+          ...result.assets
+            .filter((asset) => !knownUris.has(asset.uri))
+            .map((asset) => ({
+              id: `${asset.uri}:${Date.now()}:${Math.random()}`,
+              asset,
+              uploadName: "",
+              status: "queued" as const,
+            })),
+        ];
+      });
     } catch (pickerError) {
       const message = messageFromError(pickerError);
       setError(message);
@@ -72,8 +80,9 @@ export default function FileUploadModal({
 
   const handleUpload = async () => {
     if (uploadingRef.current) return;
-    if (!selectedFile) {
-      const message = "Choose a file before uploading.";
+    const queuedItems = queue.filter((item) => item.status === "queued");
+    if (!queuedItems.length) {
+      const message = "Add files to the queue before uploading.";
       setError(message);
       showToast({ title: "No file selected", message, variant: "error" });
       return;
@@ -82,21 +91,60 @@ export default function FileUploadModal({
     uploadingRef.current = true;
     setUploading(true);
     setError(null);
+    let wasCancelled = false;
+    let hadFailure = false;
     try {
-      await onFileUploaded(selectedFile, fileName.trim() || undefined);
-      setSelectedFile(null);
-      setFileName("");
-      onClose();
-    } catch (uploadError) {
-      const cancelled =
-        uploadError instanceof Error && uploadError.name === "AbortError";
-      const message = cancelled
-        ? "Upload cancelled."
-        : messageFromError(uploadError);
-      setError(message);
-      if (!cancelled) {
-        showToast({ title: "Upload failed", message, variant: "error" });
+      for (const item of queuedItems) {
+        setQueue((current) => current.map((queued) =>
+          queued.id === item.id ? { ...queued, status: "uploading" } : queued,
+        ));
+        try {
+          await onFileUploaded(item.asset, item.uploadName.trim() || undefined);
+          setQueue((current) => current.map((queued) =>
+            queued.id === item.id ? { ...queued, status: "done" } : queued,
+          ));
+        } catch (uploadError) {
+          const cancelled = uploadError instanceof Error && uploadError.name === "AbortError";
+          if (cancelled) wasCancelled = true;
+          else hadFailure = true;
+          setQueue((current) => current.map((queued) =>
+            queued.id === item.id
+              ? { ...queued, status: cancelled ? "queued" : "failed" }
+              : queued,
+          ));
+          if (cancelled) break;
+          const message = messageFromError(uploadError);
+          setError(message);
+          showToast({ title: "Upload failed", message, variant: "error" });
+        }
       }
+      if (!wasCancelled && !hadFailure && !queue.some((item) => item.status === "failed")) onClose();
+    } finally {
+      uploadingRef.current = false;
+      setUploading(false);
+    }
+  };
+
+  const retryUpload = async (id: string) => {
+    const item = queue.find((queued) => queued.id === id);
+    if (!item || uploadingRef.current) return;
+    uploadingRef.current = true;
+    setUploading(true);
+    setQueue((current) => current.map((queued) =>
+      queued.id === id ? { ...queued, status: "uploading" } : queued,
+    ));
+    try {
+      await onFileUploaded(item.asset, item.uploadName.trim() || undefined);
+      setQueue((current) => current.map((queued) =>
+        queued.id === id ? { ...queued, status: "done" } : queued,
+      ));
+    } catch (retryError) {
+      const cancelled = retryError instanceof Error && retryError.name === "AbortError";
+      const message = messageFromError(retryError);
+      setQueue((current) => current.map((queued) =>
+        queued.id === id ? { ...queued, status: cancelled ? "queued" : "failed" } : queued,
+      ));
+      if (!cancelled) showToast({ title: "Retry failed", message, variant: "error" });
     } finally {
       uploadingRef.current = false;
       setUploading(false);
@@ -149,7 +197,7 @@ export default function FileUploadModal({
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.body}
               >
-                <Text style={styles.label}>Choose a file</Text>
+                <Text style={styles.label}>Upload queue</Text>
                 <Pressable
                   onPress={() => void chooseFile()}
                   disabled={uploading}
@@ -161,30 +209,23 @@ export default function FileUploadModal({
                   <FileText size={20} color={theme.colors.brand} />
                   <View style={styles.fileDetails}>
                     <Text numberOfLines={1} style={styles.fileTitle}>
-                      {selectedFile?.name ?? "Browse files on this device"}
+                      {queue.length ? "Add more files" : "Choose files from this device"}
                     </Text>
                     <Text style={styles.fileSubtitle}>
-                      {selectedFile?.size === undefined
-                        ? "Choose any supported file"
-                        : convertFileSize(selectedFile.size)}
+                      {`${queue.length} ${queue.length === 1 ? "file" : "files"} in queue`}
                     </Text>
                   </View>
                 </Pressable>
 
-                {selectedFile && (
-                  <>
-                    <Text style={styles.label}>Optional file name</Text>
-                    <TextInput
-                      value={fileName}
-                      onChangeText={setFileName}
-                      placeholder="Keep the original name"
-                      placeholderTextColor={theme.colors.mutedText}
-                      style={styles.input}
-                      editable={!uploading}
-                      autoCapitalize="none"
-                    />
-                  </>
-                )}
+                <UploadQueueList
+                  items={queue}
+                  disabled={uploading}
+                  onRemove={(id) => setQueue((current) => current.filter((item) => item.id !== id))}
+                  onRetry={(id) => void retryUpload(id)}
+                  onNameChange={(id, uploadName) => setQueue((current) => current.map((item) =>
+                    item.id === id ? { ...item, uploadName } : item,
+                  ))}
+                />
 
                 {error && (
                   <View style={styles.errorBox}>
@@ -236,13 +277,13 @@ export default function FileUploadModal({
                   <Pressable
                     style={[
                       styles.uploadSubmitBtn,
-                      !selectedFile && styles.disabledButton,
+                      !queue.some((item) => item.status === "queued") && styles.disabledButton,
                     ]}
-                    disabled={!selectedFile}
+                    disabled={!queue.some((item) => item.status === "queued")}
                     onPress={() => void handleUpload()}
                   >
                     <Upload size={16} color="#FFFFFF" strokeWidth={2.4} />
-                    <Text style={styles.uploadSubmitBtnText}>Upload file</Text>
+                    <Text style={styles.uploadSubmitBtnText}>Upload {queue.filter((item) => item.status === "queued").length} files</Text>
                   </Pressable>
                 </View>
               )}

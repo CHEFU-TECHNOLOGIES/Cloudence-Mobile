@@ -13,6 +13,14 @@ export const profileStyles = StyleSheet.create({
         color: theme.colors.secondaryText,
         fontWeight: "500",
     },
+    versionText: {
+        alignSelf: "center",
+        marginTop: 8,
+        marginBottom: 10,
+        fontSize: 11,
+        color: theme.colors.secondaryText,
+        fontWeight: "500",
+    },
     root: {
         flex: 1,
         backgroundColor: theme.colors.background,
@@ -221,6 +229,29 @@ export const profileStyles = StyleSheet.create({
         borderWidth: 1,
         borderColor: theme.colors.border,
         marginBottom: 16,
+    },
+    legalLinksCard: {
+        backgroundColor: theme.colors.surface,
+        borderRadius: theme.radius.lg,
+        paddingHorizontal: 16,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        marginBottom: 16,
+    },
+    legalSectionTitle: {
+        fontSize: 14,
+        fontWeight: "700",
+        color: theme.colors.text,
+        marginBottom: 8,
+        marginLeft: 2,
+    },
+    legalLinkRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        paddingVertical: 14,
+        gap: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.borderSubtle,
     },
 
     accountActionRow: {

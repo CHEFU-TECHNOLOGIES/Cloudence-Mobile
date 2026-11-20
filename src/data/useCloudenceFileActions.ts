@@ -190,10 +190,19 @@ export function useCloudenceFileActions({
   );
 
   const share = useCallback(
-    async (fileId: string, users: string[]) => {
+    async (
+      fileId: string,
+      users: string[],
+      shareExpiresAt?: string | null,
+    ) => {
       if (!userId) throw new Error("Sign in to share Cloudence files.");
       const accessToken = await getAccessToken();
-      const updated = await updateFileSharing(accessToken, fileId, users);
+      const updated = await updateFileSharing(
+        accessToken,
+        fileId,
+        users,
+        shareExpiresAt,
+      );
       setFiles(
         getFiles().map((file) =>
           file.id === fileId

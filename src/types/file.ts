@@ -23,6 +23,7 @@ export type CloudFile = {
     avatar?: string;
   };
   users: string[];
+  shareExpiresAt?: string;
   url?: string;
   folderId?: string;
   dimensions?: string;

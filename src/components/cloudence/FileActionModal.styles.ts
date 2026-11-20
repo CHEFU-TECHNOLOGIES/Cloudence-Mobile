@@ -110,6 +110,30 @@ export const styles = StyleSheet.create({
     lineHeight: 18,
     marginBottom: 16,
   },
+  expirationOptions: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 6,
+  },
+  expirationOption: {
+    flex: 1,
+    alignItems: "center",
+    borderRadius: theme.radius.full,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceSubtle,
+    paddingVertical: 10,
+  },
+  expirationOptionText: {
+    color: theme.colors.text,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  expirationCurrent: {
+    color: theme.colors.secondaryText,
+    fontSize: 11,
+    marginBottom: 12,
+  },
   input: {
     height: 48,
     borderWidth: 1,

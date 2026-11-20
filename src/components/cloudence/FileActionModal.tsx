@@ -29,7 +29,11 @@ type Props = {
   onClose: () => void;
   onRename?: (fileId: string, newName: string) => void | Promise<void>;
   onDelete?: (fileId: string) => void | Promise<void>;
-  onShare?: (fileId: string, emails: string[]) => void | Promise<void>;
+  onShare?: (
+    fileId: string,
+    emails: string[],
+    shareExpiresAt?: string | null,
+  ) => void | Promise<void>;
   onDownload?: (
     file: CloudFile,
     onProgress?: (progress: number | null) => void,
