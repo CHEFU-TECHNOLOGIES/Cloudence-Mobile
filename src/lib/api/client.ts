@@ -10,6 +10,16 @@ export class ApiError extends Error {
   }
 }
 
+type UnauthorizedHandler = (accessToken: string) => Promise<void>;
+let unauthorizedHandler: UnauthorizedHandler | null = null;
+
+export function setUnauthorizedHandler(handler: UnauthorizedHandler) {
+  unauthorizedHandler = handler;
+  return () => {
+    if (unauthorizedHandler === handler) unauthorizedHandler = null;
+  };
+}
+
 export function getApiUrl(path: string) {
   return `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
 }
@@ -97,6 +107,9 @@ export async function apiRequest<T>(
       : new Error("The request did not return a response.");
   }
   if (!response.ok) {
+    if (response.status === 401) {
+      await unauthorizedHandler?.(accessToken);
+    }
     const body = await response.text();
     throw new ApiError(getApiErrorMessage(body, response.status), response.status);
   }

@@ -7,26 +7,30 @@ import React, {
   useState,
 } from "react";
 import * as AuthSession from "expo-auth-session";
+import { randomUUID } from "expo-crypto";
+import * as WebBrowser from "expo-web-browser";
 import {
   ApiError,
   apiRequest,
+  setUnauthorizedHandler,
 } from "../lib/api/client";
+import {
+  ACCOUNT_BASE_URL,
+  OAUTH_CLIENT_ID,
+  OAUTH_DISCOVERY,
+  OAUTH_REDIRECT_URI,
+} from "../lib/api/config";
+import type { StoredTokens, StoredUser } from "../lib/auth/tokens";
 import {
   clearStoredTokens,
   readStoredTokens,
   refreshStoredTokens,
   saveStoredTokens,
-  StoredTokens,
   tokenNeedsRefresh,
   toStoredTokens,
 } from "../lib/auth/tokens";
 
-export type CloudenceUser = {
-  id: string;
-  fullName?: string;
-  email?: string;
-  avatar?: string;
-};
+export type CloudenceUser = StoredUser;
 
 type SessionStatus = "loading" | "authenticated" | "unauthenticated" | "error";
 
@@ -34,13 +38,16 @@ type SessionContextValue = {
   status: SessionStatus;
   user: CloudenceUser | null;
   error: string | null;
-  completeSignIn: (response: AuthSession.TokenResponse) => Promise<void>;
+  isSigningIn: boolean;
+  signIn: () => Promise<void>;
   getAccessToken: () => Promise<string>;
   retrySessionRestore: () => Promise<void>;
   signOut: () => Promise<void>;
 };
 
 const SessionContext = createContext<SessionContextValue | null>(null);
+
+WebBrowser.maybeCompleteAuthSession();
 
 async function loadCurrentUser(accessToken: string): Promise<CloudenceUser> {
   const result = await apiRequest<unknown>(
@@ -55,11 +62,14 @@ async function loadCurrentUser(accessToken: string): Promise<CloudenceUser> {
   const fullName = Reflect.get(result, "name");
   const email = Reflect.get(result, "email");
   const avatar = Reflect.get(result, "picture");
+  const app = Reflect.get(result, "app");
 
   if (
     typeof id !== "string" ||
+    typeof email !== "string" ||
+    !email.includes("@") ||
+    app !== "cloudence" ||
     (fullName !== undefined && typeof fullName !== "string") ||
-    (email !== undefined && typeof email !== "string") ||
     (avatar !== undefined && typeof avatar !== "string")
   ) {
     throw new Error("The account response was invalid.");
@@ -80,18 +90,18 @@ function getErrorMessage(error: unknown) {
 }
 
 function isInvalidRefreshToken(error: unknown) {
-  return (
-    error instanceof AuthSession.TokenError &&
-    error.code === "invalid_grant"
-  );
+  return error instanceof AuthSession.TokenError &&
+    ["invalid_grant", "invalid_client", "unauthorized_client"].includes(error.code);
 }
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<SessionStatus>("loading");
   const [user, setUser] = useState<CloudenceUser | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isSigningIn, setIsSigningIn] = useState(false);
   const tokensRef = useRef<StoredTokens | null>(null);
   const refreshPromiseRef = useRef<Promise<StoredTokens> | null>(null);
+  const signInPendingRef = useRef(false);
 
   const setAuthenticated = useCallback(
     (nextTokens: StoredTokens, nextUser: CloudenceUser) => {
@@ -111,19 +121,24 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const restoreSession = useCallback(async () => {
+    const storedTokens = await readStoredTokens();
     setStatus("loading");
     setError(null);
 
-    const storedTokens = await readStoredTokens();
     if (!storedTokens) {
       setUnauthenticated();
       return;
     }
 
-    tokensRef.current = storedTokens;
     let activeTokens = storedTokens;
-    if (tokenNeedsRefresh(storedTokens)) {
-      if (!storedTokens.refreshToken) {
+    tokensRef.current = activeTokens;
+    if (activeTokens.user) {
+      setAuthenticated(activeTokens, activeTokens.user);
+      return;
+    }
+
+    if (tokenNeedsRefresh(activeTokens)) {
+      if (!activeTokens.refreshToken) {
         await clearStoredTokens();
         setUnauthenticated("Your session expired. Sign in to continue.");
         return;
@@ -131,10 +146,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
       try {
         activeTokens = await refreshStoredTokens(
-          storedTokens.refreshToken,
-          storedTokens,
+          activeTokens.refreshToken,
+          activeTokens,
         );
         await saveStoredTokens(activeTokens);
+        tokensRef.current = activeTokens;
       } catch (refreshError) {
         if (isInvalidRefreshToken(refreshError)) {
           await clearStoredTokens();
@@ -147,7 +163,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const currentUser = await loadCurrentUser(activeTokens.accessToken);
-      setAuthenticated(activeTokens, currentUser);
+      const tokensWithUser = { ...activeTokens, user: currentUser };
+      await saveStoredTokens(tokensWithUser);
+      setAuthenticated(tokensWithUser, currentUser);
     } catch (userError) {
       if (userError instanceof ApiError && userError.status === 401) {
         await clearStoredTokens();
@@ -159,31 +177,102 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [setAuthenticated, setUnauthenticated]);
 
   useEffect(() => {
-    void restoreSession().catch((restoreError: unknown) => {
-      setError(getErrorMessage(restoreError));
-      setStatus("error");
-    });
+    let active = true;
+    void Promise.resolve()
+      .then(restoreSession)
+      .catch((restoreError: unknown) => {
+        if (!active) return;
+        setError(getErrorMessage(restoreError));
+        setStatus("error");
+      });
+    return () => {
+      active = false;
+    };
   }, [restoreSession]);
 
-  const completeSignIn = useCallback(
-    async (response: AuthSession.TokenResponse) => {
-      const nextTokens = toStoredTokens(response);
-      await saveStoredTokens(nextTokens);
-      tokensRef.current = nextTokens;
-
-      try {
-        const currentUser = await loadCurrentUser(nextTokens.accessToken);
-        setAuthenticated(nextTokens, currentUser);
-      } catch (signInError) {
-        if (signInError instanceof ApiError && signInError.status === 401) {
-          await clearStoredTokens();
-          setUnauthenticated("The sign-in token was rejected. Please try again.");
-        }
-        throw signInError;
-      }
-    },
-    [setAuthenticated, setUnauthenticated],
+  useEffect(
+    () =>
+      setUnauthorizedHandler(async (rejectedToken) => {
+        if (tokensRef.current?.accessToken !== rejectedToken) return;
+        await clearStoredTokens();
+        setUnauthenticated("Your session expired. Sign in to continue.");
+      }),
+    [setUnauthenticated],
   );
+
+  const signIn = useCallback(async () => {
+    if (signInPendingRef.current) return;
+    signInPendingRef.current = true;
+    setIsSigningIn(true);
+    setError(null);
+
+    try {
+      const state = randomUUID();
+      const request = new AuthSession.AuthRequest({
+        clientId: OAUTH_CLIENT_ID,
+        redirectUri: OAUTH_REDIRECT_URI,
+        scopes: ["openid", "profile", "email"],
+        responseType: AuthSession.ResponseType.Code,
+        usePKCE: true,
+        state,
+        extraParams: { nonce: randomUUID() },
+      });
+      const authorizeUrl = await request.makeAuthUrlAsync(OAUTH_DISCOVERY);
+      const accountUrl = new URL("/login", ACCOUNT_BASE_URL);
+      accountUrl.searchParams.set("app", "cloudence");
+      accountUrl.searchParams.set("returnTo", authorizeUrl);
+      accountUrl.searchParams.set("prompt", "select_account");
+      const result = await request.promptAsync(OAUTH_DISCOVERY, {
+        url: accountUrl.toString(),
+      });
+
+      if (result.type === "error") {
+        throw new Error(
+          result.error?.description ??
+            result.params.error_description ??
+            "The account sign-in could not be completed.",
+        );
+      }
+      if (result.type !== "success") return;
+
+      const code = result.params.code;
+      if (
+        result.params.state !== state ||
+        !code ||
+        !request.codeVerifier
+      ) {
+        throw new Error("Sign-in validation failed. Please try again.");
+      }
+
+      const tokenResponse = await AuthSession.exchangeCodeAsync(
+        {
+          clientId: OAUTH_CLIENT_ID,
+          code,
+          redirectUri: OAUTH_REDIRECT_URI,
+          extraParams: { code_verifier: request.codeVerifier },
+        },
+        OAUTH_DISCOVERY,
+      );
+      const nextTokens = toStoredTokens(tokenResponse);
+      const currentUser = await loadCurrentUser(nextTokens.accessToken);
+      const tokensWithUser = { ...nextTokens, user: currentUser };
+      await saveStoredTokens(tokensWithUser);
+      setAuthenticated(tokensWithUser, currentUser);
+    } catch (signInError) {
+      if (signInError instanceof ApiError && signInError.status === 401) {
+        await clearStoredTokens();
+        setUnauthenticated("The sign-in token was rejected. Please try again.");
+      }
+      setError(
+        signInError instanceof Error
+          ? signInError.message
+          : "Unable to sign in. Please try again.",
+      );
+    } finally {
+      signInPendingRef.current = false;
+      setIsSigningIn(false);
+    }
+  }, [setAuthenticated, setUnauthenticated]);
 
   const getAccessToken = useCallback(async () => {
     const currentTokens = tokensRef.current;
@@ -204,9 +293,25 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           currentTokens.refreshToken!,
           currentTokens,
         );
-        await saveStoredTokens(refreshed);
-        const currentUser = user ?? (await loadCurrentUser(refreshed.accessToken));
-        setAuthenticated(refreshed, currentUser);
+        if (tokensRef.current !== currentTokens) {
+          const latestTokens = tokensRef.current;
+          if (latestTokens && !tokenNeedsRefresh(latestTokens)) {
+            return latestTokens;
+          }
+          throw new Error("Your session changed. Sign in again.");
+        }
+        const currentUser =
+          user ?? refreshed.user ?? (await loadCurrentUser(refreshed.accessToken));
+        if (tokensRef.current !== currentTokens) {
+          const latestTokens = tokensRef.current;
+          if (latestTokens && !tokenNeedsRefresh(latestTokens)) {
+            return latestTokens;
+          }
+          throw new Error("Your session changed. Sign in again.");
+        }
+        const refreshedWithUser = { ...refreshed, user: currentUser };
+        await saveStoredTokens(refreshedWithUser);
+        setAuthenticated(refreshedWithUser, currentUser);
         return refreshed;
       })();
       refreshPromiseRef.current = refreshPromise;
@@ -215,6 +320,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     try {
       return (await refreshPromise).accessToken;
     } catch (refreshError) {
+      if (tokensRef.current !== currentTokens) {
+        const latestTokens = tokensRef.current;
+        if (latestTokens && !tokenNeedsRefresh(latestTokens)) {
+          return latestTokens.accessToken;
+        }
+        throw refreshError;
+      }
       if (isInvalidRefreshToken(refreshError)) {
         await clearStoredTokens();
         setUnauthenticated("Your session expired. Sign in to continue.");
@@ -236,7 +348,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     status,
     user,
     error,
-    completeSignIn,
+    isSigningIn,
+    signIn,
     getAccessToken,
     retrySessionRestore: restoreSession,
     signOut,

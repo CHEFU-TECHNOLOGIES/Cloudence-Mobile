@@ -3,8 +3,6 @@ import { CloudFile } from "../types/file";
 
 export const FILES_CACHE_KEY = "files";
 export const USAGE_CACHE_KEY = "usage";
-export const FILES_STALE_TIME = 2 * 60 * 1000;
-export const USAGE_STALE_TIME = 3 * 60 * 1000;
 
 export function messageFromError(error: unknown) {
   return error instanceof Error

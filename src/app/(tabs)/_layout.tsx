@@ -1,106 +1,63 @@
 import React from "react";
-import { Tabs } from "expo-router";
-import {
-  LayoutDashboard,
-  FolderOpen,
-  Image as ImageIcon,
-  Film,
-  UserRound,
-} from "lucide-react-native";
+import { NativeTabs } from "expo-router/native-tabs";
 import { theme } from "../../constants/theme";
-import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
 export default function TabLayout() {
-  const { useSideTabs, tabRailWidth } = useResponsiveLayout();
-
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: theme.colors.brand,
-        tabBarInactiveTintColor: "#829598",
-        tabBarPosition: useSideTabs ? "left" : "bottom",
-        tabBarVariant: useSideTabs ? "material" : "uikit",
-        tabBarLabelPosition:
-          useSideTabs && tabRailWidth < 100 ? "below-icon" : "beside-icon",
-        tabBarHideOnKeyboard: true,
-        tabBarStyle: useSideTabs
-          ? {
-              width: tabRailWidth,
-              paddingTop: 20,
-              paddingBottom: 16,
-              backgroundColor: "#FFFFFF",
-              borderRightColor: theme.colors.border,
-              borderTopWidth: 0,
-              elevation: 0,
-            }
-          : {
-              height: 68,
-              paddingTop: 8,
-              paddingBottom: 10,
-              backgroundColor: "#FFFFFF",
-              borderTopColor: theme.colors.border,
-              elevation: 4,
-              shadowColor: "rgba(0,0,0,0.06)",
-              shadowOffset: { width: 0, height: -2 },
-              shadowOpacity: 0.1,
-              shadowRadius: 6,
-            },
-        tabBarLabelStyle: {
-          fontSize: useSideTabs ? 11 : 10.5,
-          fontWeight: "700",
-        },
+    <NativeTabs
+      backgroundColor="#FFFFFF"
+      indicatorColor={theme.colors.brandLight}
+      tintColor={theme.colors.brand}
+      iconColor={{ default: "#829598", selected: theme.colors.brand }}
+      labelStyle={{
+        color: "#829598",
+        selected: { color: theme.colors.brand },
       }}
     >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: "Dashboard",
-          tabBarIcon: ({ color, size }) => (
-            <LayoutDashboard color={color} size={size} strokeWidth={2.2} />
-          ),
-        }}
-      />
+      <NativeTabs.Trigger name="index">
+        <NativeTabs.Trigger.Label>Dashboard</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          sf={{ default: "square.grid.2x2", selected: "square.grid.2x2.fill" }}
+          md={{ default: "dashboard", selected: "dashboard" }}
+          selectedColor={theme.colors.brand}
+        />
+      </NativeTabs.Trigger>
 
-      <Tabs.Screen
-        name="files"
-        options={{
-          title: "Files",
-          tabBarIcon: ({ color, size }) => (
-            <FolderOpen color={color} size={size} strokeWidth={2.2} />
-          ),
-        }}
-      />
+      <NativeTabs.Trigger name="files">
+        <NativeTabs.Trigger.Label>Files</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          sf={{ default: "folder", selected: "folder.fill" }}
+          md={{ default: "folder_open", selected: "folder_open" }}
+          selectedColor={theme.colors.brand}
+        />
+      </NativeTabs.Trigger>
 
-      <Tabs.Screen
-        name="images"
-        options={{
-          title: "Images",
-          tabBarIcon: ({ color, size }) => (
-            <ImageIcon color={color} size={size} strokeWidth={2.2} />
-          ),
-        }}
-      />
+      <NativeTabs.Trigger name="images">
+        <NativeTabs.Trigger.Label>Images</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          sf={{ default: "photo", selected: "photo.fill" }}
+          md={{ default: "image", selected: "image" }}
+          selectedColor={theme.colors.brand}
+        />
+      </NativeTabs.Trigger>
 
-      <Tabs.Screen
-        name="media"
-        options={{
-          title: "Media",
-          tabBarIcon: ({ color, size }) => (
-            <Film color={color} size={size} strokeWidth={2.2} />
-          ),
-        }}
-      />
+      <NativeTabs.Trigger name="media">
+        <NativeTabs.Trigger.Label>Media</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          sf={{ default: "play.rectangle", selected: "play.rectangle.fill" }}
+          md={{ default: "movie", selected: "movie" }}
+          selectedColor={theme.colors.brand}
+        />
+      </NativeTabs.Trigger>
 
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: "Account",
-          tabBarIcon: ({ color, size }) => (
-            <UserRound color={color} size={size} strokeWidth={2.2} />
-          ),
-        }}
-      />
-    </Tabs>
+      <NativeTabs.Trigger name="profile">
+        <NativeTabs.Trigger.Label>Account</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          sf={{ default: "person.crop.circle", selected: "person.crop.circle.fill" }}
+          md={{ default: "account_circle", selected: "account_circle" }}
+          selectedColor={theme.colors.brand}
+        />
+      </NativeTabs.Trigger>
+    </NativeTabs>
   );
 }

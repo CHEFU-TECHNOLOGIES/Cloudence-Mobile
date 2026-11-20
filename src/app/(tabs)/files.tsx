@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   ScrollView,
+  RefreshControl,
   StatusBar,
   Text,
   View,
@@ -46,6 +47,7 @@ export default function FilesScreen() {
   const {
     files,
     isLoading,
+    isRefreshing,
     isOffline,
     error,
     refresh,
@@ -190,6 +192,18 @@ export default function FilesScreen() {
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={
+              activeSection
+                ? sectionListing.isRefreshing
+                : isRefreshing
+            }
+            onRefresh={() => void handleRefresh()}
+            tintColor={theme.colors.brand}
+            colors={[theme.colors.brand]}
+          />
+        }
       >
         <AppHeader onUpload={() => setIsUploadModalVisible(true)} />
 

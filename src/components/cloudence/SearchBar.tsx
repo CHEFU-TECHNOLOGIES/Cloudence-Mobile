@@ -12,7 +12,7 @@ type Props = {
 export default function SearchBar({
   value,
   onChangeText,
-  placeholder = "Search files, formats, categories...",
+  placeholder = "Search your files...",
 }: Props) {
   const [isFocused, setIsFocused] = useState(false);
 
@@ -57,14 +57,14 @@ export default function SearchBar({
 
 const styles = StyleSheet.create({
   container: {
-    height: 48,
+    height: 50,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
     paddingHorizontal: 14,
-    borderRadius: theme.radius.md,
+    borderRadius: 16,
     backgroundColor: theme.colors.surface,
-    borderWidth: 1.2,
+    borderWidth: 1,
     borderColor: theme.colors.border,
     shadowColor: "rgba(66, 71, 97, 0.04)",
     shadowOffset: { width: 0, height: 2 },

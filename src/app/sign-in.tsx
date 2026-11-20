@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import {
     ActivityIndicator,
     Pressable,
@@ -8,84 +8,21 @@ import {
     View,
     useWindowDimensions,
 } from "react-native";
-import * as AuthSession from "expo-auth-session";
-import * as WebBrowser from "expo-web-browser";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ArrowRight, ShieldCheck } from "lucide-react-native";
 import CloudenceLogo from "../components/cloudence/CloudenceLogo";
 import { theme } from "../constants/theme";
-import {
-    OAUTH_CLIENT_ID,
-    OAUTH_DISCOVERY,
-    OAUTH_REDIRECT_URI,
-} from "../lib/api/config";
 import { useSession } from "../auth/SessionContext";
-
-WebBrowser.maybeCompleteAuthSession();
 
 export default function SignInScreen() {
     const { width } = useWindowDimensions();
     const {
-        completeSignIn,
-        error: sessionError,
+        error,
+        isSigningIn,
         retrySessionRestore,
+        signIn,
+        status,
     } = useSession();
-    const [isSigningIn, setIsSigningIn] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [request, , promptAsync] = AuthSession.useAuthRequest(
-        {
-            clientId: OAUTH_CLIENT_ID,
-            redirectUri: OAUTH_REDIRECT_URI,
-            responseType: AuthSession.ResponseType.Code,
-            scopes: ["openid", "profile", "email"],
-            prompt: AuthSession.Prompt.SelectAccount,
-            usePKCE: true,
-            codeChallengeMethod: AuthSession.CodeChallengeMethod.S256,
-        },
-        OAUTH_DISCOVERY,
-    );
-
-    const handleSignIn = async () => {
-        if (!request) return;
-        setError(null);
-        setIsSigningIn(true);
-
-        try {
-            const result = await promptAsync();
-            if (result.type === "error") {
-                throw new Error(
-                    result.error?.description ??
-                        result.params.error_description ??
-                        "The account sign-in could not be completed.",
-                );
-            }
-            if (result.type !== "success") return;
-
-            const code = result.params.code;
-            if (!code || !request.codeVerifier) {
-                throw new Error("The account sign-in response was incomplete.");
-            }
-
-            const tokens = await AuthSession.exchangeCodeAsync(
-                {
-                    clientId: OAUTH_CLIENT_ID,
-                    code,
-                    redirectUri: OAUTH_REDIRECT_URI,
-                    extraParams: { code_verifier: request.codeVerifier },
-                },
-                OAUTH_DISCOVERY,
-            );
-            await completeSignIn(tokens);
-        } catch (signInError) {
-            setError(
-                signInError instanceof Error
-                    ? signInError.message
-                    : "Unable to sign in. Please try again.",
-            );
-        } finally {
-            setIsSigningIn(false);
-        }
-    };
 
     return (
         <SafeAreaView
@@ -111,12 +48,12 @@ export default function SignInScreen() {
                     files and workspace.
                 </Text>
 
-                {(error || sessionError) && (
+                {error && (
                     <View style={styles.errorBox}>
                         <Text style={styles.errorText}>
-                            {error || sessionError}
+                            {error}
                         </Text>
-                        {sessionError && (
+                        {status === "error" && (
                             <Pressable
                                 onPress={() => void retrySessionRestore()}
                                 accessibilityRole="button"
@@ -128,11 +65,11 @@ export default function SignInScreen() {
                 )}
 
                 <Pressable
-                    disabled={!request || isSigningIn}
-                    onPress={() => void handleSignIn()}
+                    disabled={isSigningIn}
+                    onPress={() => void signIn()}
                     style={({ pressed }) => [
                         styles.signInButton,
-                        (!request || isSigningIn) && styles.disabledButton,
+                        isSigningIn && styles.disabledButton,
                         pressed && styles.pressedButton,
                     ]}
                 >

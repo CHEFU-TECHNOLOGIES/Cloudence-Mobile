@@ -7,6 +7,7 @@ import {
     Text,
     View,
     Pressable,
+    RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ArrowDownUp } from "lucide-react-native";
@@ -34,6 +35,7 @@ export default function MediaScreen() {
     const {
         files,
         isLoading,
+        isRefreshing,
         isOffline,
         error,
         refresh,
@@ -106,6 +108,14 @@ export default function MediaScreen() {
                 ]}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
+                refreshControl={
+                    <RefreshControl
+                        refreshing={isRefreshing}
+                        onRefresh={() => void refresh()}
+                        tintColor={theme.colors.brand}
+                        colors={[theme.colors.brand]}
+                    />
+                }
             >
                 <AppHeader onUpload={() => setIsUploadModalVisible(true)} />
 

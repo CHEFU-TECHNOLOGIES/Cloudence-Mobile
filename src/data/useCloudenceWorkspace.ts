@@ -7,13 +7,11 @@ import { CloudenceUsage, listFiles, getUsage } from "../lib/api/files";
 import { CloudFile } from "../types/file";
 import {
   FILES_CACHE_KEY,
-  FILES_STALE_TIME,
   isCachedFile,
   isCachedUsage,
   messageFromError,
   stripSignedUrls,
   USAGE_CACHE_KEY,
-  USAGE_STALE_TIME,
 } from "./workspaceMetadata";
 import { useCloudenceFileActions } from "./useCloudenceFileActions";
 
@@ -83,11 +81,8 @@ export function useCloudenceWorkspace() {
       if (!userId || isOfflineRef.current) return Promise.resolve(false);
       if (refreshPromiseRef.current) return refreshPromiseRef.current;
 
-      const now = Date.now();
-      const shouldFetchFiles =
-        force || now - filesCachedAtRef.current >= FILES_STALE_TIME;
-      const shouldFetchUsage =
-        force || now - usageCachedAtRef.current >= USAGE_STALE_TIME;
+      const shouldFetchFiles = force || filesCachedAtRef.current === 0;
+      const shouldFetchUsage = force || usageCachedAtRef.current === 0;
       if (!shouldFetchFiles && !shouldFetchUsage)
         return Promise.resolve(true);
 

@@ -19,6 +19,7 @@ function AppNavigator() {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="sso-callback" />
       <Stack.Protected
         guard={status === "authenticated"}
         redirectTo="/sign-in"

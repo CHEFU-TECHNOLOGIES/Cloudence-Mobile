@@ -13,8 +13,6 @@ import {
 import { useSession } from "../auth/SessionContext";
 import { useCloudenceData } from "../data/CloudenceDataProvider";
 
-const STALE_TIME = 2 * 60 * 1000;
-
 const EMPTY_LISTING: SectionListing = {
   files: [],
   folders: [],
@@ -84,6 +82,7 @@ export function useSectionListing(
   const [storedKey, setStoredKey] = useState("");
   const [listing, setListing] = useState<SectionListing>(EMPTY_LISTING);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
@@ -108,7 +107,7 @@ export function useSectionListing(
               setStoredKey(stateKey);
               setListing(cached.payload);
               setError(null);
-              if (Date.now() - cached.cachedAt < STALE_TIME) return;
+              return;
             }
           }
 
@@ -120,6 +119,7 @@ export function useSectionListing(
           if (storedKeyRef.current !== stateKey || !hasListingRef.current) {
             setIsLoading(true);
           }
+          setIsRefreshing(true);
           const accessToken = await getAccessToken();
           const nextListing = await listSectionListing(
             accessToken,
@@ -149,7 +149,10 @@ export function useSectionListing(
             );
           }
         } finally {
-          if (!signal?.aborted) setIsLoading(false);
+          if (!signal?.aborted) {
+            setIsLoading(false);
+            setIsRefreshing(false);
+          }
         }
       })();
 
@@ -251,6 +254,7 @@ export function useSectionListing(
   return {
     listing: isCurrentListing ? listing : EMPTY_LISTING,
     isLoading: isCurrentListing ? isLoading : Boolean(section),
+    isRefreshing: isCurrentListing && isRefreshing,
     isLoadingMore: isCurrentListing && isLoadingMore,
     error: isCurrentListing ? error : null,
     refresh,

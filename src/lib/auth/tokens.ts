@@ -9,6 +9,14 @@ export type StoredTokens = {
   accessToken: string;
   refreshToken?: string;
   expiresAt: number;
+  user?: StoredUser;
+};
+
+export type StoredUser = {
+  id: string;
+  fullName?: string;
+  email?: string;
+  avatar?: string;
 };
 
 export function toStoredTokens(
@@ -24,6 +32,7 @@ export function toStoredTokens(
     refreshToken: response.refreshToken ?? previous?.refreshToken,
     expiresAt:
       (response.issuedAt + (response.expiresIn ?? 3600)) * 1000,
+    ...(previous?.user ? { user: previous.user } : {}),
   };
 }
 
@@ -35,17 +44,34 @@ export async function readStoredTokens(): Promise<StoredTokens | null> {
   try {
     value = JSON.parse(serialized);
   } catch {
+    await clearStoredTokens();
     throw new Error("The saved sign-in data is invalid. Sign in again.");
   }
 
+  const user = typeof value === "object" && value !== null
+    ? Reflect.get(value, "user")
+    : undefined;
   if (
     typeof value !== "object" ||
     value === null ||
     typeof Reflect.get(value, "accessToken") !== "string" ||
+    !Reflect.get(value, "accessToken") ||
     typeof Reflect.get(value, "expiresAt") !== "number" ||
+    !Number.isFinite(Reflect.get(value, "expiresAt")) ||
     (Reflect.get(value, "refreshToken") !== undefined &&
-      typeof Reflect.get(value, "refreshToken") !== "string")
+      typeof Reflect.get(value, "refreshToken") !== "string") ||
+    (user !== undefined &&
+      (typeof user !== "object" ||
+        user === null ||
+        typeof Reflect.get(user, "id") !== "string" ||
+        (Reflect.get(user, "fullName") !== undefined &&
+          typeof Reflect.get(user, "fullName") !== "string") ||
+        (Reflect.get(user, "email") !== undefined &&
+          typeof Reflect.get(user, "email") !== "string") ||
+        (Reflect.get(user, "avatar") !== undefined &&
+          typeof Reflect.get(user, "avatar") !== "string")))
   ) {
+    await clearStoredTokens();
     throw new Error("The saved sign-in data is invalid. Sign in again.");
   }
 

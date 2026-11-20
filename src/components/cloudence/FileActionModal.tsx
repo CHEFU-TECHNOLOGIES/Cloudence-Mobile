@@ -8,8 +8,9 @@ import {
   TouchableWithoutFeedback,
   ScrollView,
   Alert,
-  ActivityIndicator,
   useWindowDimensions,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import {
   Edit3,
@@ -24,7 +25,7 @@ import {
 import { CloudFile, ActionModalType } from "../../types/file";
 import { theme } from "../../constants/theme";
 import { convertFileSize, formatDateTime } from "../../utils/fileUtils";
-import { getFileIconDetails } from "./FileCard";
+import FileThumbnail from "./FileThumbnail";
 import { styles } from "./FileActionModal.styles";
 
 type Props = {
@@ -41,6 +42,13 @@ type Props = {
   onCancelDownload?: () => void;
 };
 
+function getFileBaseName(file: CloudFile) {
+  const suffix = `.${file.extension}`;
+  return file.name.toLowerCase().endsWith(suffix.toLowerCase())
+    ? file.name.slice(0, -suffix.length)
+    : file.name;
+}
+
 function FileActionSheetContent({
   file,
   onClose,
@@ -48,7 +56,6 @@ function FileActionSheetContent({
   onDelete,
   onShare,
   onDownload,
-  onCancelDownload,
 }: {
   file: CloudFile;
   onClose: () => void;
@@ -59,36 +66,43 @@ function FileActionSheetContent({
     file: CloudFile,
     onProgress?: (progress: number | null) => void,
   ) => void | Promise<void>;
-  onCancelDownload?: () => void;
 }) {
   const [activeAction, setActiveAction] = useState<ActionModalType>(null);
-  const [nameInput, setNameInput] = useState(file.name);
+  const [nameInput, setNameInput] = useState(getFileBaseName(file));
   const [emailInput, setEmailInput] = useState("");
   const [sharedEmails, setSharedEmails] = useState<string[]>(file.users);
-  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
-  const [isDownloading, setIsDownloading] = useState(false);
   const { width, height } = useWindowDimensions();
 
-  const iconDetails = getFileIconDetails(file);
-  const Icon = iconDetails.icon;
-
-  const handleSaveRename = async () => {
+  const handleSaveRename = () => {
     if (!nameInput.trim()) {
       Alert.alert("Invalid Name", "Please enter a valid file name.");
       return;
     }
+
+    const nextName = `${nameInput.trim()}.${file.extension}`;
     try {
-      await onRename?.(file.id, nameInput.trim());
+      const renamePromise = onRename?.(file.id, nextName);
       onClose();
+      void Promise.resolve(renamePromise).catch((error: unknown) => {
+        Alert.alert(
+          "Rename Failed",
+          error instanceof Error
+            ? error.message
+            : "The file could not be renamed.",
+        );
+      });
     } catch (error) {
+      onClose();
       Alert.alert(
         "Rename Failed",
-        error instanceof Error ? error.message : "The file could not be renamed.",
+        error instanceof Error
+          ? error.message
+          : "The file could not be renamed.",
       );
     }
   };
 
-  const handleAddEmail = async () => {
+  const handleAddEmail = () => {
     const trimmed = emailInput.trim();
     if (!trimmed || !trimmed.includes("@")) {
       Alert.alert("Invalid Email", "Please enter a valid email address.");
@@ -99,82 +113,77 @@ function FileActionSheetContent({
       return;
     }
     const updated = [...sharedEmails, trimmed];
-    try {
-      await onShare?.(file.id, updated);
-      setSharedEmails(updated);
-      setEmailInput("");
-    } catch (error) {
-      Alert.alert(
-        "Share Failed",
-        error instanceof Error ? error.message : "File access could not be updated.",
-      );
-    }
-  };
-
-  const handleRemoveEmail = async (email: string) => {
-    const updated = sharedEmails.filter((e) => e !== email);
-    try {
-      await onShare?.(file.id, updated);
-      setSharedEmails(updated);
-    } catch (error) {
-      Alert.alert(
-        "Update Failed",
-        error instanceof Error ? error.message : "File access could not be updated.",
-      );
-    }
-  };
-
-  const handleDeleteConfirm = async () => {
-    try {
-      await onDelete?.(file.id);
-      onClose();
-    } catch (error) {
-      Alert.alert(
-        "Delete Failed",
-        error instanceof Error ? error.message : "The file could not be deleted.",
-      );
-    }
-  };
-
-  const handleStartDownload = async () => {
-    setDownloadProgress(0);
-    setIsDownloading(true);
-    try {
-      await onDownload?.(file, setDownloadProgress);
-      onClose();
-    } catch (error) {
-      setDownloadProgress(null);
-      setActiveAction(null);
-      if (!(error instanceof Error && error.name === "AbortError")) {
+    onClose();
+    void Promise.resolve()
+      .then(() => onShare?.(file.id, updated))
+      .catch((error: unknown) => {
         Alert.alert(
-          "Download Failed",
-          error instanceof Error ? error.message : "The file could not be downloaded.",
+          "Share Failed",
+          error instanceof Error
+            ? error.message
+            : "File access could not be updated.",
         );
-      }
-    } finally {
-      setIsDownloading(false);
-    }
+      });
+  };
+
+  const handleRemoveEmail = (email: string) => {
+    const updated = sharedEmails.filter((e) => e !== email);
+    onClose();
+    void Promise.resolve()
+      .then(() => onShare?.(file.id, updated))
+      .catch((error: unknown) => {
+        Alert.alert(
+          "Update Failed",
+          error instanceof Error
+            ? error.message
+            : "File access could not be updated.",
+        );
+      });
+  };
+
+  const handleDeleteConfirm = () => {
+    onClose();
+    void Promise.resolve()
+      .then(() => onDelete?.(file.id))
+      .catch((error: unknown) => {
+        Alert.alert(
+          "Delete Failed",
+          error instanceof Error
+            ? error.message
+            : "The file could not be deleted.",
+        );
+      });
+  };
+
+  const handleStartDownload = () => {
+    onClose();
+    void Promise.resolve()
+      .then(() => onDownload?.(file))
+      .catch((error: unknown) => {
+        if (!(error instanceof Error && error.name === "AbortError")) {
+          Alert.alert(
+            "Download Failed",
+            error instanceof Error
+              ? error.message
+              : "The file could not be downloaded.",
+          );
+        }
+      });
   };
 
   return (
     <View
       style={[
         styles.sheet,
-        { maxHeight: height * 0.85, width: width >= 600 ? 560 : "100%" },
+        {
+          maxHeight: height * 0.85,
+          width: width >= 600 ? 560 : "100%",
+        },
         width >= 600 && styles.tabletSheet,
       ]}
     >
-      <View style={styles.dragBar} />
-
       <View style={styles.fileSummaryHeader}>
-        <View
-          style={[
-            styles.thumbnail,
-            { backgroundColor: iconDetails.background, borderColor: iconDetails.border },
-          ]}
-        >
-          <Icon size={22} color={iconDetails.color} strokeWidth={2.2} />
-        </View>
+        <FileThumbnail file={file} style={styles.thumbnail} />
 
         <View style={styles.headerText}>
           <Text numberOfLines={1} style={styles.fileName}>
@@ -198,7 +207,12 @@ function FileActionSheetContent({
             style={styles.actionRow}
             onPress={() => setActiveAction("rename")}
           >
-            <View style={[styles.actionIconBox, { backgroundColor: theme.colors.brandLight }]}>
+            <View
+              style={[
+                styles.actionIconBox,
+                { backgroundColor: theme.colors.brandLight },
+              ]}
+            >
               <Edit3 size={18} color={theme.colors.brand} />
             </View>
             <Text style={styles.actionLabel}>Rename</Text>
@@ -208,7 +222,9 @@ function FileActionSheetContent({
             style={styles.actionRow}
             onPress={() => setActiveAction("details")}
           >
-            <View style={[styles.actionIconBox, { backgroundColor: "#EFF6FF" }]}>
+            <View
+              style={[styles.actionIconBox, { backgroundColor: "#EFF6FF" }]}
+            >
               <Info size={18} color="#2563EB" />
             </View>
             <Text style={styles.actionLabel}>Details</Text>
@@ -218,7 +234,9 @@ function FileActionSheetContent({
             style={styles.actionRow}
             onPress={() => setActiveAction("share")}
           >
-            <View style={[styles.actionIconBox, { backgroundColor: "#F5F3FF" }]}>
+            <View
+              style={[styles.actionIconBox, { backgroundColor: "#F5F3FF" }]}
+            >
               <Share2 size={18} color="#7C3AED" />
             </View>
             <Text style={styles.actionLabel}>Share with others</Text>
@@ -227,11 +245,12 @@ function FileActionSheetContent({
           <Pressable
             style={styles.actionRow}
             onPress={() => {
-              setActiveAction("download");
-              void handleStartDownload();
+              handleStartDownload();
             }}
           >
-            <View style={[styles.actionIconBox, { backgroundColor: "#ECFDF5" }]}>
+            <View
+              style={[styles.actionIconBox, { backgroundColor: "#ECFDF5" }]}
+            >
               <Download size={18} color="#059669" />
             </View>
             <Text style={styles.actionLabel}>Download file</Text>
@@ -241,7 +260,12 @@ function FileActionSheetContent({
             style={[styles.actionRow, styles.deleteRow]}
             onPress={() => setActiveAction("delete")}
           >
-            <View style={[styles.actionIconBox, { backgroundColor: theme.colors.errorBg }]}>
+            <View
+              style={[
+                styles.actionIconBox,
+                { backgroundColor: theme.colors.errorBg },
+              ]}
+            >
               <Trash2 size={18} color={theme.colors.error} />
             </View>
             <Text style={[styles.actionLabel, { color: theme.colors.error }]}>
@@ -258,14 +282,18 @@ function FileActionSheetContent({
             Enter a new name for your file.
           </Text>
 
-          <TextInput
-            value={nameInput}
-            onChangeText={setNameInput}
-            style={styles.input}
-            placeholder="File name"
-            placeholderTextColor={theme.colors.mutedText}
-            autoFocus
-          />
+          <View style={styles.renameField}>
+            <TextInput
+              value={nameInput}
+              onChangeText={setNameInput}
+              style={styles.renameInput}
+              placeholder="File name"
+              placeholderTextColor={theme.colors.mutedText}
+              autoFocus
+              autoCapitalize="none"
+              selectTextOnFocus
+            />
+          </View>
 
           <View style={styles.buttonRow}>
             <Pressable
@@ -274,10 +302,7 @@ function FileActionSheetContent({
             >
               <Text style={styles.cancelBtnText}>Back</Text>
             </Pressable>
-            <Pressable
-              style={styles.primaryBtn}
-              onPress={handleSaveRename}
-            >
+            <Pressable style={styles.primaryBtn} onPress={handleSaveRename}>
               <Text style={styles.primaryBtnText}>Save Changes</Text>
             </Pressable>
           </View>
@@ -291,12 +316,16 @@ function FileActionSheetContent({
           <View style={styles.detailsCard}>
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>Format</Text>
-              <Text style={styles.detailValue}>{file.extension.toUpperCase()}</Text>
+              <Text style={styles.detailValue}>
+                {file.extension.toUpperCase()}
+              </Text>
             </View>
 
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>Size</Text>
-              <Text style={styles.detailValue}>{convertFileSize(file.size)}</Text>
+              <Text style={styles.detailValue}>
+                {convertFileSize(file.size)}
+              </Text>
             </View>
 
             <View style={styles.detailItem}>
@@ -306,13 +335,17 @@ function FileActionSheetContent({
 
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>Uploaded</Text>
-              <Text style={styles.detailValue}>{formatDateTime(file.createdAt)}</Text>
+              <Text style={styles.detailValue}>
+                {formatDateTime(file.createdAt)}
+              </Text>
             </View>
 
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>Shared with</Text>
               <Text style={styles.detailValue}>
-                {sharedEmails.length > 0 ? `${sharedEmails.length} users` : "Private"}
+                {sharedEmails.length > 0
+                  ? `${sharedEmails.length} users`
+                  : "Private"}
               </Text>
             </View>
           </View>
@@ -343,10 +376,7 @@ function FileActionSheetContent({
               keyboardType="email-address"
               autoCapitalize="none"
             />
-            <Pressable
-              style={styles.addEmailBtn}
-              onPress={handleAddEmail}
-            >
+            <Pressable style={styles.addEmailBtn} onPress={handleAddEmail}>
               <UserPlus size={16} color="#FFFFFF" />
               <Text style={styles.addEmailBtnText}>Share</Text>
             </Pressable>
@@ -356,7 +386,10 @@ function FileActionSheetContent({
             Users with access ({sharedEmails.length})
           </Text>
 
-          <ScrollView style={styles.emailList} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={styles.emailList}
+            showsVerticalScrollIndicator={false}
+          >
             {sharedEmails.map((email) => (
               <View key={email} style={styles.emailItem}>
                 <Text numberOfLines={1} style={styles.emailText}>
@@ -372,9 +405,7 @@ function FileActionSheetContent({
               </View>
             ))}
             {sharedEmails.length === 0 && (
-              <Text style={styles.noEmailsText}>
-                No one has access yet.
-              </Text>
+              <Text style={styles.noEmailsText}>No one has access yet.</Text>
             )}
           </ScrollView>
 
@@ -387,41 +418,6 @@ function FileActionSheetContent({
         </View>
       )}
 
-      {activeAction === "download" && (
-        <View style={styles.subModalContent}>
-          <Text style={styles.subModalTitle}>Preparing Download</Text>
-          <Text style={styles.subModalDesc}>
-            Opening {file.name}.{file.extension.toLowerCase()} from your workspace.
-          </Text>
-
-          <View style={styles.downloadProgressContainer}>
-            {isDownloading && (
-              <ActivityIndicator color={theme.colors.brand} />
-            )}
-            <View style={styles.progressBarWrapper}>
-              <View
-                style={[
-                  styles.progressBarFill,
-                  { width: `${downloadProgress ?? 0}%` },
-                ]}
-              />
-            </View>
-            <Text style={styles.progressPercentText}>
-              {downloadProgress === null
-                ? "Downloading…"
-                : `${downloadProgress}% downloaded`}
-            </Text>
-          </View>
-          <Pressable
-            style={styles.cancelDownloadButton}
-            onPress={onCancelDownload}
-            disabled={!isDownloading}
-          >
-            <Text style={styles.cancelBtnText}>Cancel download</Text>
-          </Pressable>
-        </View>
-      )}
-
       {activeAction === "delete" && (
         <View style={styles.subModalContent}>
           <Text style={[styles.subModalTitle, { color: theme.colors.error }]}>
@@ -429,7 +425,12 @@ function FileActionSheetContent({
           </Text>
           <Text style={styles.subModalDesc}>
             Are you sure you want to permanently delete{" "}
-            <Text style={{ fontWeight: "800", color: theme.colors.brandDark }}>
+            <Text
+              style={{
+                fontWeight: "800",
+                color: theme.colors.brandDark,
+              }}
+            >
               {file.name}
             </Text>
             ? This action cannot be undone.
@@ -443,7 +444,10 @@ function FileActionSheetContent({
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </Pressable>
             <Pressable
-              style={[styles.primaryBtn, { backgroundColor: theme.colors.error }]}
+              style={[
+                styles.primaryBtn,
+                { backgroundColor: theme.colors.error },
+              ]}
               onPress={handleDeleteConfirm}
             >
               <Text style={styles.primaryBtnText}>Delete Permanently</Text>
@@ -463,7 +467,6 @@ export default function FileActionModal({
   onDelete,
   onShare,
   onDownload,
-  onCancelDownload,
 }: Props) {
   const isWide = useWindowDimensions().width >= 600;
   if (!file) return null;
@@ -477,18 +480,23 @@ export default function FileActionModal({
     >
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={[styles.overlay, isWide && styles.tabletOverlay]}>
-          <TouchableWithoutFeedback>
-            <FileActionSheetContent
-              key={file.id}
-              file={file}
-              onClose={onClose}
-              onRename={onRename}
-              onDelete={onDelete}
-              onShare={onShare}
-              onDownload={onDownload}
-              onCancelDownload={onCancelDownload}
-            />
-          </TouchableWithoutFeedback>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            keyboardVerticalOffset={0}
+            style={styles.keyboardAvoider}
+          >
+            <TouchableWithoutFeedback>
+              <FileActionSheetContent
+                key={file.id}
+                file={file}
+                onClose={onClose}
+                onRename={onRename}
+                onDelete={onDelete}
+                onShare={onShare}
+                onDownload={onDownload}
+              />
+            </TouchableWithoutFeedback>
+          </KeyboardAvoidingView>
         </View>
       </TouchableWithoutFeedback>
     </Modal>

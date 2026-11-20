@@ -24,8 +24,9 @@ npm run start:dev-client
 ## GitHub Actions
 
 The `Android debug build` workflow runs on pushes, pull requests, and manual
-dispatch. It creates an unsigned debug APK and uploads it as a workflow
-artifact. It does not create or publish a release build.
+dispatch. It creates a debug-signed APK using the standard Android debug
+keystore and uploads it as a workflow artifact. It does not create or publish
+a release build.
 
 ## Other checks
 
