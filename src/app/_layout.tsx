@@ -6,6 +6,7 @@ import { CloudenceDataProvider } from "../data/CloudenceDataProvider";
 import CenteredPageSkeleton from "../components/cloudence/skeletons/CenteredPageSkeleton";
 import { ToastProvider } from "../components/cloudence/ToastProvider";
 import WorkspaceNotificationMonitor from "../components/cloudence/WorkspaceNotificationMonitor";
+import PushNotificationBootstrap from "../components/cloudence/PushNotificationBootstrap";
 
 function AppNavigator() {
   const { status } = useSession();
@@ -37,6 +38,7 @@ export default function RootLayout() {
         <CloudenceDataProvider>
           <ToastProvider>
             <WorkspaceNotificationMonitor />
+            <PushNotificationBootstrap />
             <AppNavigator />
           </ToastProvider>
         </CloudenceDataProvider>

@@ -29,6 +29,7 @@ import {
   tokenNeedsRefresh,
   toStoredTokens,
 } from "../lib/auth/tokens";
+import { unregisterPushDevice } from "../lib/notifications/pushNotifications";
 
 export type CloudenceUser = StoredUser;
 
@@ -340,9 +341,18 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [setAuthenticated, setUnauthenticated, user]);
 
   const signOut = useCallback(async () => {
+    try {
+      const accessToken = await getAccessToken();
+      await Promise.race([
+        unregisterPushDevice(accessToken),
+        new Promise<void>((resolve) => setTimeout(resolve, 1200)),
+      ]);
+    } catch {
+      // Signing out must still complete if push registration cannot be reached.
+    }
     await clearStoredTokens();
     setUnauthenticated();
-  }, [setUnauthenticated]);
+  }, [getAccessToken, setUnauthenticated]);
 
   const value: SessionContextValue = {
     status,
