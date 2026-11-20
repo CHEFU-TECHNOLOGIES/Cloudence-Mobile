@@ -51,6 +51,7 @@ type Props = {
   count: number;
   sizeBytes: number;
   latestDate?: string;
+  width?: number;
   onPress?: () => void;
 };
 
@@ -59,6 +60,7 @@ export default function CategoryCard({
   count,
   sizeBytes,
   latestDate,
+  width,
   onPress,
 }: Props) {
   const config = categoryConfig[category];
@@ -69,6 +71,7 @@ export default function CategoryCard({
       onPress={onPress}
       style={({ pressed }) => [
         styles.card,
+        width !== undefined && { width },
         { borderColor: config.border },
         pressed && { transform: [{ scale: 0.97 }], opacity: 0.9 },
       ]}

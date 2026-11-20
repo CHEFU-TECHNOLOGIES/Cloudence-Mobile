@@ -17,10 +17,13 @@ export default function StorageChartCard({
   onUpgradePress,
 }: Props) {
   const { width: screenWidth } = useWindowDimensions();
-  const percentage = Math.min(
-    Math.max(Number(((usedBytes / totalBytes) * 100).toFixed(1)), 0),
-    100
-  );
+  const percentage =
+    totalBytes > 0
+      ? Math.min(
+          Math.max(Number(((usedBytes / totalBytes) * 100).toFixed(1)), 0),
+          100,
+        )
+      : 0;
 
   // Responsive SVG Gauge dimensions
   const isSmallScreen = screenWidth < 380;

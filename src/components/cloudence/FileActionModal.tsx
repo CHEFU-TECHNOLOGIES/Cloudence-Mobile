@@ -5,10 +5,11 @@ import {
   Text,
   TextInput,
   Pressable,
-  StyleSheet,
   TouchableWithoutFeedback,
   ScrollView,
   Alert,
+  ActivityIndicator,
+  useWindowDimensions,
 } from "react-native";
 import {
   Edit3,
@@ -24,15 +25,20 @@ import { CloudFile, ActionModalType } from "../../types/file";
 import { theme } from "../../constants/theme";
 import { convertFileSize, formatDateTime } from "../../utils/fileUtils";
 import { getFileIconDetails } from "./FileCard";
+import { styles } from "./FileActionModal.styles";
 
 type Props = {
   visible: boolean;
   file: CloudFile | null;
   onClose: () => void;
-  onRename?: (fileId: string, newName: string) => void;
-  onDelete?: (fileId: string) => void;
-  onShare?: (fileId: string, emails: string[]) => void;
-  onDownload?: (file: CloudFile) => void;
+  onRename?: (fileId: string, newName: string) => void | Promise<void>;
+  onDelete?: (fileId: string) => void | Promise<void>;
+  onShare?: (fileId: string, emails: string[]) => void | Promise<void>;
+  onDownload?: (
+    file: CloudFile,
+    onProgress?: (progress: number | null) => void,
+  ) => void | Promise<void>;
+  onCancelDownload?: () => void;
 };
 
 function FileActionSheetContent({
@@ -42,33 +48,47 @@ function FileActionSheetContent({
   onDelete,
   onShare,
   onDownload,
+  onCancelDownload,
 }: {
   file: CloudFile;
   onClose: () => void;
-  onRename?: (fileId: string, newName: string) => void;
-  onDelete?: (fileId: string) => void;
-  onShare?: (fileId: string, emails: string[]) => void;
-  onDownload?: (file: CloudFile) => void;
+  onRename?: (fileId: string, newName: string) => void | Promise<void>;
+  onDelete?: (fileId: string) => void | Promise<void>;
+  onShare?: (fileId: string, emails: string[]) => void | Promise<void>;
+  onDownload?: (
+    file: CloudFile,
+    onProgress?: (progress: number | null) => void,
+  ) => void | Promise<void>;
+  onCancelDownload?: () => void;
 }) {
   const [activeAction, setActiveAction] = useState<ActionModalType>(null);
   const [nameInput, setNameInput] = useState(file.name);
   const [emailInput, setEmailInput] = useState("");
   const [sharedEmails, setSharedEmails] = useState<string[]>(file.users);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const { width, height } = useWindowDimensions();
 
   const iconDetails = getFileIconDetails(file);
   const Icon = iconDetails.icon;
 
-  const handleSaveRename = () => {
+  const handleSaveRename = async () => {
     if (!nameInput.trim()) {
       Alert.alert("Invalid Name", "Please enter a valid file name.");
       return;
     }
-    onRename?.(file.id, nameInput.trim());
-    onClose();
+    try {
+      await onRename?.(file.id, nameInput.trim());
+      onClose();
+    } catch (error) {
+      Alert.alert(
+        "Rename Failed",
+        error instanceof Error ? error.message : "The file could not be renamed.",
+      );
+    }
   };
 
-  const handleAddEmail = () => {
+  const handleAddEmail = async () => {
     const trimmed = emailInput.trim();
     if (!trimmed || !trimmed.includes("@")) {
       Alert.alert("Invalid Email", "Please enter a valid email address.");
@@ -79,46 +99,73 @@ function FileActionSheetContent({
       return;
     }
     const updated = [...sharedEmails, trimmed];
-    setSharedEmails(updated);
-    setEmailInput("");
-    onShare?.(file.id, updated);
+    try {
+      await onShare?.(file.id, updated);
+      setSharedEmails(updated);
+      setEmailInput("");
+    } catch (error) {
+      Alert.alert(
+        "Share Failed",
+        error instanceof Error ? error.message : "File access could not be updated.",
+      );
+    }
   };
 
-  const handleRemoveEmail = (email: string) => {
+  const handleRemoveEmail = async (email: string) => {
     const updated = sharedEmails.filter((e) => e !== email);
-    setSharedEmails(updated);
-    onShare?.(file.id, updated);
+    try {
+      await onShare?.(file.id, updated);
+      setSharedEmails(updated);
+    } catch (error) {
+      Alert.alert(
+        "Update Failed",
+        error instanceof Error ? error.message : "File access could not be updated.",
+      );
+    }
   };
 
-  const handleDeleteConfirm = () => {
-    onDelete?.(file.id);
-    onClose();
+  const handleDeleteConfirm = async () => {
+    try {
+      await onDelete?.(file.id);
+      onClose();
+    } catch (error) {
+      Alert.alert(
+        "Delete Failed",
+        error instanceof Error ? error.message : "The file could not be deleted.",
+      );
+    }
   };
 
-  const handleStartDownload = () => {
+  const handleStartDownload = async () => {
     setDownloadProgress(0);
-    const interval = setInterval(() => {
-      setDownloadProgress((prev) => {
-        if (prev === null) return 0;
-        if (prev >= 100) {
-          clearInterval(interval);
-          setTimeout(() => {
-            onDownload?.(file);
-            onClose();
-          }, 400);
-          return 100;
-        }
-        return prev + 35;
-      });
-    }, 180);
+    setIsDownloading(true);
+    try {
+      await onDownload?.(file, setDownloadProgress);
+      onClose();
+    } catch (error) {
+      setDownloadProgress(null);
+      setActiveAction(null);
+      if (!(error instanceof Error && error.name === "AbortError")) {
+        Alert.alert(
+          "Download Failed",
+          error instanceof Error ? error.message : "The file could not be downloaded.",
+        );
+      }
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   return (
-    <View style={styles.sheet}>
-      {/* Sheet Drag Indicator */}
+    <View
+      style={[
+        styles.sheet,
+        { maxHeight: height * 0.85, width: width >= 600 ? 560 : "100%" },
+        width >= 600 && styles.tabletSheet,
+      ]}
+    >
       <View style={styles.dragBar} />
 
-      {/* File Summary Header */}
       <View style={styles.fileSummaryHeader}>
         <View
           style={[
@@ -145,7 +192,6 @@ function FileActionSheetContent({
 
       <View style={styles.divider} />
 
-      {/* 1. Main Action Options List */}
       {activeAction === null && (
         <View style={styles.actionsList}>
           <Pressable
@@ -182,7 +228,7 @@ function FileActionSheetContent({
             style={styles.actionRow}
             onPress={() => {
               setActiveAction("download");
-              handleStartDownload();
+              void handleStartDownload();
             }}
           >
             <View style={[styles.actionIconBox, { backgroundColor: "#ECFDF5" }]}>
@@ -205,7 +251,6 @@ function FileActionSheetContent({
         </View>
       )}
 
-      {/* 2. Rename View */}
       {activeAction === "rename" && (
         <View style={styles.subModalContent}>
           <Text style={styles.subModalTitle}>Rename File</Text>
@@ -239,7 +284,6 @@ function FileActionSheetContent({
         </View>
       )}
 
-      {/* 3. Details View */}
       {activeAction === "details" && (
         <View style={styles.subModalContent}>
           <Text style={styles.subModalTitle}>File Details</Text>
@@ -282,7 +326,6 @@ function FileActionSheetContent({
         </View>
       )}
 
-      {/* 4. Share View */}
       {activeAction === "share" && (
         <View style={styles.subModalContent}>
           <Text style={styles.subModalTitle}>Share File</Text>
@@ -344,32 +387,41 @@ function FileActionSheetContent({
         </View>
       )}
 
-      {/* 5. Download View */}
       {activeAction === "download" && (
         <View style={styles.subModalContent}>
-          <Text style={styles.subModalTitle}>Downloading File</Text>
+          <Text style={styles.subModalTitle}>Preparing Download</Text>
           <Text style={styles.subModalDesc}>
-            Fetching {file.name}.{file.extension.toLowerCase()} from Cloud CDN...
+            Opening {file.name}.{file.extension.toLowerCase()} from your workspace.
           </Text>
 
-          <View style={styles.progressBarWrapper}>
-            <View
-              style={[
-                styles.progressBarFill,
-                { width: `${downloadProgress ?? 0}%` },
-              ]}
-            />
+          <View style={styles.downloadProgressContainer}>
+            {isDownloading && (
+              <ActivityIndicator color={theme.colors.brand} />
+            )}
+            <View style={styles.progressBarWrapper}>
+              <View
+                style={[
+                  styles.progressBarFill,
+                  { width: `${downloadProgress ?? 0}%` },
+                ]}
+              />
+            </View>
+            <Text style={styles.progressPercentText}>
+              {downloadProgress === null
+                ? "Downloading…"
+                : `${downloadProgress}% downloaded`}
+            </Text>
           </View>
-
-          <Text style={styles.progressPercentText}>
-            {downloadProgress !== null && downloadProgress >= 100
-              ? "Complete!"
-              : `${downloadProgress ?? 0}%`}
-          </Text>
+          <Pressable
+            style={styles.cancelDownloadButton}
+            onPress={onCancelDownload}
+            disabled={!isDownloading}
+          >
+            <Text style={styles.cancelBtnText}>Cancel download</Text>
+          </Pressable>
         </View>
       )}
 
-      {/* 6. Delete View */}
       {activeAction === "delete" && (
         <View style={styles.subModalContent}>
           <Text style={[styles.subModalTitle, { color: theme.colors.error }]}>
@@ -411,7 +463,9 @@ export default function FileActionModal({
   onDelete,
   onShare,
   onDownload,
+  onCancelDownload,
 }: Props) {
+  const isWide = useWindowDimensions().width >= 600;
   if (!file) return null;
 
   return (
@@ -422,7 +476,7 @@ export default function FileActionModal({
       onRequestClose={onClose}
     >
       <TouchableWithoutFeedback onPress={onClose}>
-        <View style={styles.overlay}>
+        <View style={[styles.overlay, isWide && styles.tabletOverlay]}>
           <TouchableWithoutFeedback>
             <FileActionSheetContent
               key={file.id}
@@ -432,6 +486,7 @@ export default function FileActionModal({
               onDelete={onDelete}
               onShare={onShare}
               onDownload={onDownload}
+              onCancelDownload={onCancelDownload}
             />
           </TouchableWithoutFeedback>
         </View>
@@ -439,256 +494,3 @@ export default function FileActionModal({
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(4, 5, 12, 0.5)",
-    justifyContent: "flex-end",
-  },
-  sheet: {
-    backgroundColor: theme.colors.surface,
-    borderTopLeftRadius: theme.radius.xl,
-    borderTopRightRadius: theme.radius.xl,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 32,
-    maxHeight: "85%",
-  },
-  dragBar: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: theme.colors.border,
-    alignSelf: "center",
-    marginBottom: 14,
-  },
-  fileSummaryHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  thumbnail: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerText: {
-    flex: 1,
-    minWidth: 0,
-  },
-  fileName: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: theme.colors.text,
-  },
-  fileMeta: {
-    fontSize: 11,
-    color: theme.colors.secondaryText,
-    marginTop: 2,
-  },
-  closeBtn: {
-    padding: 6,
-    borderRadius: theme.radius.full,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: theme.colors.borderSubtle,
-    marginVertical: 14,
-  },
-  actionsList: {
-    gap: 2,
-  },
-  actionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 11,
-    paddingHorizontal: 8,
-    borderRadius: theme.radius.md,
-    gap: 12,
-  },
-  actionIconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  actionLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: theme.colors.text,
-  },
-  deleteRow: {
-    marginTop: 4,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.borderSubtle,
-    paddingTop: 14,
-  },
-  subModalContent: {
-    paddingTop: 4,
-  },
-  subModalTitle: {
-    fontSize: 17,
-    fontWeight: "800",
-    color: theme.colors.text,
-    marginBottom: 6,
-  },
-  subModalDesc: {
-    fontSize: 12.5,
-    color: theme.colors.secondaryText,
-    lineHeight: 18,
-    marginBottom: 16,
-  },
-  input: {
-    height: 48,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.md,
-    paddingHorizontal: 14,
-    fontSize: 14,
-    color: theme.colors.text,
-    backgroundColor: theme.colors.surfaceSubtle,
-    marginBottom: 18,
-  },
-  buttonRow: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  cancelBtn: {
-    flex: 1,
-    height: 46,
-    borderRadius: theme.radius.full,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cancelBtnText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: theme.colors.text,
-  },
-  primaryBtn: {
-    flex: 1.3,
-    height: 46,
-    borderRadius: theme.radius.full,
-    backgroundColor: theme.colors.brand,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  primaryBtnText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#FFFFFF",
-  },
-  detailsCard: {
-    backgroundColor: theme.colors.surfaceSubtle,
-    borderRadius: theme.radius.md,
-    padding: 14,
-    gap: 10,
-    marginBottom: 18,
-  },
-  detailItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  detailLabel: {
-    fontSize: 12,
-    color: theme.colors.secondaryText,
-    fontWeight: "500",
-  },
-  detailValue: {
-    fontSize: 12.5,
-    fontWeight: "700",
-    color: theme.colors.text,
-  },
-  backBtnFull: {
-    height: 46,
-    borderRadius: theme.radius.full,
-    backgroundColor: theme.colors.brand,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  backBtnText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#FFFFFF",
-  },
-  addEmailRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 16,
-  },
-  addEmailBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: theme.colors.brand,
-    paddingHorizontal: 16,
-    borderRadius: theme.radius.md,
-    justifyContent: "center",
-  },
-  addEmailBtnText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  sharedSectionTitle: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: theme.colors.secondaryText,
-    marginBottom: 8,
-  },
-  emailList: {
-    maxHeight: 140,
-    marginBottom: 16,
-  },
-  emailItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: theme.colors.surfaceSubtle,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: theme.radius.sm,
-    marginBottom: 6,
-  },
-  emailText: {
-    fontSize: 12.5,
-    color: theme.colors.text,
-    flex: 1,
-  },
-  removeEmailBtn: {
-    padding: 4,
-  },
-  noEmailsText: {
-    fontSize: 12,
-    color: theme.colors.mutedText,
-    fontStyle: "italic",
-    paddingVertical: 8,
-  },
-  progressBarWrapper: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: theme.colors.borderSubtle,
-    overflow: "hidden",
-    marginTop: 8,
-  },
-  progressBarFill: {
-    height: "100%",
-    backgroundColor: theme.colors.brand,
-    borderRadius: 4,
-  },
-  progressPercentText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: theme.colors.brandDark,
-    textAlign: "center",
-    marginTop: 10,
-  },
-});

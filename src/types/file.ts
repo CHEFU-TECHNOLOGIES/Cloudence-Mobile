@@ -24,6 +24,7 @@ export type CloudFile = {
   };
   users: string[];
   url?: string;
+  folderId?: string;
   dimensions?: string;
   duration?: string;
   color?: string;

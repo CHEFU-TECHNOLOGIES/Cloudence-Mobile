@@ -1,8 +1,15 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { View, StyleSheet } from "react-native";
 import CategoryCard from "./CategoryCard";
 import { FileCategory, CloudFile } from "../../types/file";
-import { getStorageSummary, mockFiles } from "../../data/mockFiles";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+
+const categories: FileCategory[] = [
+  "Documents",
+  "Images",
+  "Media",
+  "Others",
+];
 
 type Props = {
   files?: CloudFile[];
@@ -10,56 +17,57 @@ type Props = {
 };
 
 export default function CategoryGrid({
-  files = mockFiles,
+  files = [],
   onSelectCategory,
 }: Props) {
-  const summary = getStorageSummary(files);
+  const layout = useResponsiveLayout();
+  const summary = useMemo(() => {
+    const result: Record<
+      FileCategory,
+      { count: number; size: number; latestDate?: string }
+    > = {
+      Documents: { count: 0, size: 0 },
+      Images: { count: 0, size: 0 },
+      Media: { count: 0, size: 0 },
+      Others: { count: 0, size: 0 },
+    };
+
+    for (const file of files) {
+      const category = result[file.category];
+      category.count += 1;
+      category.size += file.size;
+      if (
+        !category.latestDate ||
+        Date.parse(file.createdAt) > Date.parse(category.latestDate)
+      ) {
+        category.latestDate = file.createdAt;
+      }
+    }
+
+    return result;
+  }, [files]);
 
   return (
     <View style={styles.grid}>
-      <View style={styles.row}>
+      {categories.map((category) => (
         <CategoryCard
-          category="Documents"
-          count={summary.categories.Documents.count}
-          sizeBytes={summary.categories.Documents.size}
-          latestDate={summary.categories.Documents.latestDate}
-          onPress={() => onSelectCategory("Documents")}
+          key={category}
+          category={category}
+          count={summary[category].count}
+          sizeBytes={summary[category].size}
+          latestDate={summary[category].latestDate}
+          width={layout.cardWidth}
+          onPress={() => onSelectCategory(category)}
         />
-        <CategoryCard
-          category="Images"
-          count={summary.categories.Images.count}
-          sizeBytes={summary.categories.Images.size}
-          latestDate={summary.categories.Images.latestDate}
-          onPress={() => onSelectCategory("Images")}
-        />
-      </View>
-
-      <View style={styles.row}>
-        <CategoryCard
-          category="Media"
-          count={summary.categories.Media.count}
-          sizeBytes={summary.categories.Media.size}
-          latestDate={summary.categories.Media.latestDate}
-          onPress={() => onSelectCategory("Media")}
-        />
-        <CategoryCard
-          category="Others"
-          count={summary.categories.Others.count}
-          sizeBytes={summary.categories.Others.size}
-          latestDate={summary.categories.Others.latestDate}
-          onPress={() => onSelectCategory("Others")}
-        />
-      </View>
+      ))}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   grid: {
-    gap: 12,
-  },
-  row: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 12,
   },
 });

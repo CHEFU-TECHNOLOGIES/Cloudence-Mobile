@@ -19,13 +19,33 @@ import EmptyState from "../../components/cloudence/EmptyState";
 import FileActionModal from "../../components/cloudence/FileActionModal";
 import FileUploadModal from "../../components/cloudence/FileUploadModal";
 import CloudenceLogo from "../../components/cloudence/CloudenceLogo";
+import WorkspaceStatus from "../../components/cloudence/WorkspaceStatus";
 
-import { mockFiles as initialFiles } from "../../data/mockFiles";
+import { useCloudenceData } from "../../data/CloudenceDataProvider";
 import { theme } from "../../constants/theme";
 import { CloudFile, FileCategory } from "../../types/file";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import * as DocumentPicker from "expo-document-picker";
 
 export default function DashboardScreen() {
-  const [files, setFiles] = useState<CloudFile[]>(initialFiles);
+  const layout = useResponsiveLayout();
+  const {
+    files,
+    recentFiles,
+    usage,
+    isLoading,
+    isOffline,
+    error,
+    refresh,
+    rename,
+    remove,
+    share,
+    upload,
+    download,
+    uploadProgress,
+    cancelUpload,
+    cancelDownload,
+  } = useCloudenceData();
   const [query, setQuery] = useState("");
   const [selectedFileForAction, setSelectedFileForAction] = useState<CloudFile | null>(null);
   const [isActionModalVisible, setIsActionModalVisible] = useState(false);
@@ -64,62 +84,56 @@ export default function DashboardScreen() {
     setIsActionModalVisible(true);
   };
 
-  const handleRename = (fileId: string, newName: string) => {
-    setFiles((prev) =>
-      prev.map((f) => (f.id === fileId ? { ...f, name: newName } : f))
-    );
-    Alert.alert("File Renamed", `File renamed to "${newName}".`);
+  const handleDelete = async (fileId: string) => {
+    await remove(fileId);
+    Alert.alert("File Deleted", "The file has been removed from your workspace.");
   };
 
-  const handleDelete = (fileId: string) => {
-    setFiles((prev) => prev.filter((f) => f.id !== fileId));
-    Alert.alert("File Deleted", "The file has been permanently removed.");
-  };
-
-  const handleShare = (fileId: string, emails: string[]) => {
-    setFiles((prev) =>
-      prev.map((f) => (f.id === fileId ? { ...f, users: emails } : f))
-    );
-  };
-
-  const handleDownload = (file: CloudFile) => {
-    Alert.alert(
-      "Download Complete",
-      `${file.name}.${file.extension.toLowerCase()} is saved to your device.`
-    );
-  };
-
-  const handleFileUploaded = (newFile: CloudFile) => {
-    setFiles((prev) => [newFile, ...prev]);
+  const handleFileUploaded = async (
+    asset: DocumentPicker.DocumentPickerAsset,
+    name?: string,
+  ) => {
+    await upload(asset, name);
     Alert.alert(
       "Upload Successful",
-      `"${newFile.name}" has been uploaded to your Cloudence workspace.`
+      `"${name || asset.name}" has been uploaded to your Cloudence workspace.`,
     );
   };
 
-  const totalUsedBytes = useMemo(() => {
-    return files.reduce((acc, f) => acc + f.size, 0);
-  }, [files]);
+  const displayedRecentFiles = query.trim()
+    ? filteredFiles.slice(0, 5)
+    : recentFiles;
+  const totalUsedBytes = usage?.used ?? 0;
+  const totalStorageBytes = usage?.all ?? 0;
 
   return (
     <SafeAreaView style={styles.root} edges={["top", "left", "right"]}>
-      <StatusBar barStyle="dark-content" backgroundColor={theme.colors.background} />
+      <StatusBar barStyle="dark-content" />
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          {
+            width: "100%",
+            maxWidth: layout.contentMaxWidth,
+            alignSelf: "center",
+            paddingHorizontal: layout.horizontalPadding,
+          },
+        ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
         <AppHeader
           onUpload={() => setIsUploadModalVisible(true)}
-          onNotifications={() =>
-            Alert.alert(
-              "Notifications",
-              "You're all caught up. No pending file shares."
-            )
-          }
           onProfilePress={() => router.push("/profile")}
+        />
+
+        <WorkspaceStatus
+          loading={isLoading}
+          error={error}
+          offline={isOffline}
+          onRetry={refresh}
         />
 
         {/* Hero Welcome banner */}
@@ -141,16 +155,18 @@ export default function DashboardScreen() {
           <View style={styles.sectionHeading}>
             <Text style={styles.sectionTitle}>Storage overview</Text>
           </View>
-          <StorageCard
-            usedBytes={totalUsedBytes}
-            totalBytes={2 * 1024 * 1024 * 1024}
-            onUpgradePress={() =>
-              Alert.alert(
-                "Upgrade Storage",
-                "Cloudence Pro includes 100 GB storage, team roles & custom domain access."
-              )
-            }
-          />
+          {usage && (
+            <StorageCard
+              usedBytes={totalUsedBytes}
+              totalBytes={totalStorageBytes}
+              onUpgradePress={() =>
+                Alert.alert(
+                  "Upgrade Storage",
+                  "Cloudence Pro includes 100 GB storage, team roles & custom domain access.",
+                )
+              }
+            />
+          )}
         </View>
 
         {/* Categories Grid */}
@@ -167,12 +183,16 @@ export default function DashboardScreen() {
         </View>
 
         {/* Recent Files Uploaded */}
-        <RecentFiles
-          files={filteredFiles.slice(0, 5)}
-          onSeeAll={() => router.push("/files")}
-          onFilePress={handleOpenFile}
-          onFileMore={handleOpenActionMenu}
-        />
+        {(!isLoading || files.length > 0) &&
+          !error &&
+          (!query.trim() || filteredFiles.length > 0) && (
+          <RecentFiles
+            files={displayedRecentFiles}
+            onSeeAll={() => router.push("/files")}
+            onFilePress={handleOpenFile}
+            onFileMore={handleOpenActionMenu}
+          />
+        )}
 
         {query.trim().length > 0 && filteredFiles.length === 0 && (
           <EmptyState
@@ -194,16 +214,19 @@ export default function DashboardScreen() {
         visible={isActionModalVisible}
         file={selectedFileForAction}
         onClose={() => setIsActionModalVisible(false)}
-        onRename={handleRename}
+        onRename={rename}
         onDelete={handleDelete}
-        onShare={handleShare}
-        onDownload={handleDownload}
+        onShare={share}
+        onDownload={download}
+        onCancelDownload={cancelDownload}
       />
 
       <FileUploadModal
         visible={isUploadModalVisible}
         onClose={() => setIsUploadModalVisible(false)}
         onFileUploaded={handleFileUploaded}
+        uploadProgress={uploadProgress}
+        onCancelUpload={cancelUpload}
       />
     </SafeAreaView>
   );

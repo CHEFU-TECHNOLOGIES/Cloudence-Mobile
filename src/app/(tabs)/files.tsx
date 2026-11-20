@@ -1,17 +1,15 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   ScrollView,
   StatusBar,
-  StyleSheet,
   Text,
   View,
   Pressable,
-  useWindowDimensions,
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { ArrowDownUp } from "lucide-react-native";
+import { ArrowDownUp, Plus } from "lucide-react-native";
 
 import AppHeader from "../../components/cloudence/AppHeader";
 import SearchBar from "../../components/cloudence/SearchBar";
@@ -22,16 +20,45 @@ import ViewToggle from "../../components/cloudence/ViewToggle";
 import SortModal from "../../components/cloudence/SortModal";
 import FileActionModal from "../../components/cloudence/FileActionModal";
 import FileUploadModal from "../../components/cloudence/FileUploadModal";
+import FolderCard from "../../components/cloudence/FolderCard";
+import FolderNameModal from "../../components/cloudence/FolderNameModal";
+import WorkspaceStatus from "../../components/cloudence/WorkspaceStatus";
 
-import { mockFiles as initialFiles } from "../../data/mockFiles";
+import { useCloudenceData } from "../../data/CloudenceDataProvider";
+import { useSession } from "../../auth/SessionContext";
 import { theme } from "../../constants/theme";
 import { CloudFile, SortType, ViewType } from "../../types/file";
 import { convertFileSize, sortFiles } from "../../utils/fileUtils";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { useSectionListing } from "../../hooks/useSectionListing";
+import {
+  CloudenceFolder,
+  createFolder as createFolderRequest,
+  FolderSection,
+} from "../../lib/api/folders";
+import * as DocumentPicker from "expo-document-picker";
+import { filesScreenStyles as styles } from "../../components/cloudence/FilesScreen.styles";
 
 const filterCategories = ["All", "Documents", "Images", "Media", "Others"];
 
 export default function FilesScreen() {
-  const { width: screenWidth } = useWindowDimensions();
+  const layout = useResponsiveLayout();
+  const {
+    files,
+    isLoading,
+    isOffline,
+    error,
+    refresh,
+    rename,
+    remove,
+    share,
+    upload,
+    download,
+    uploadProgress,
+    cancelUpload,
+    cancelDownload,
+  } = useCloudenceData();
+  const { getAccessToken } = useSession();
   const params = useLocalSearchParams<{ category?: string }>();
   const [categoryOverride, setCategoryOverride] = useState<string | null>(null);
 
@@ -40,8 +67,17 @@ export default function FilesScreen() {
     (params.category && filterCategories.includes(params.category)
       ? params.category
       : "All");
+  const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
+  const [isCreateFolderVisible, setIsCreateFolderVisible] = useState(false);
+  const sectionByCategory: Record<string, FolderSection> = {
+    Documents: "documents",
+    Images: "images",
+    Media: "media",
+    Others: "others",
+  };
+  const activeSection = sectionByCategory[selectedCategory] ?? null;
+  const sectionListing = useSectionListing(activeSection, activeFolderId);
 
-  const [files, setFiles] = useState<CloudFile[]>(initialFiles);
   const [query, setQuery] = useState("");
   const [currentSort, setCurrentSort] = useState<SortType>("$createdAt-desc");
   const [currentView, setCurrentView] = useState<ViewType>("grid");
@@ -50,18 +86,28 @@ export default function FilesScreen() {
   const [selectedFileForAction, setSelectedFileForAction] = useState<CloudFile | null>(null);
   const [isActionModalVisible, setIsActionModalVisible] = useState(false);
 
-  // Responsive column calculation
-  const numColumns = screenWidth >= 600 ? 3 : 2;
-  const horizontalPadding = 40;
-  const gap = 12;
-  const itemWidth = Math.floor(
-    (screenWidth - horizontalPadding - (numColumns - 1) * gap) / numColumns
-  );
+  const itemWidth = layout.cardWidth;
+  const sourceFiles = activeSection
+    ? sectionListing.listing.files.filter((file) =>
+        activeFolderId
+          ? file.folderId === activeFolderId
+          : file.folderId === undefined,
+      )
+    : files;
+  const screenLoading = activeSection
+    ? sectionListing.isLoading
+    : isLoading;
+  const screenError = activeSection ? sectionListing.error : error;
+  const handleRefresh = activeSection ? sectionListing.refresh : refresh;
+
+  useEffect(() => {
+    setActiveFolderId(null);
+  }, [selectedCategory]);
 
   const filteredAndSortedFiles = useMemo(() => {
     const normalized = query.trim().toLowerCase();
 
-    const filtered = files.filter((file) => {
+    const filtered = sourceFiles.filter((file) => {
       const matchesCategory =
         selectedCategory === "All" || file.category === selectedCategory;
 
@@ -74,7 +120,7 @@ export default function FilesScreen() {
     });
 
     return sortFiles(filtered, currentSort);
-  }, [files, selectedCategory, query, currentSort]);
+  }, [sourceFiles, selectedCategory, query, currentSort]);
 
   const totalBytes = useMemo(() => {
     return filteredAndSortedFiles.reduce((acc, f) => acc + f.size, 0);
@@ -90,46 +136,58 @@ export default function FilesScreen() {
     setIsActionModalVisible(true);
   };
 
-  const handleRename = (fileId: string, newName: string) => {
-    setFiles((prev) =>
-      prev.map((f) => (f.id === fileId ? { ...f, name: newName } : f))
-    );
-    Alert.alert("File Renamed", `File renamed to "${newName}".`);
+  const handleDelete = async (fileId: string) => {
+    await remove(fileId);
+    if (activeSection) await sectionListing.refresh();
+    Alert.alert("File Deleted", "The file has been removed from your workspace.");
   };
 
-  const handleDelete = (fileId: string) => {
-    setFiles((prev) => prev.filter((f) => f.id !== fileId));
-    Alert.alert("File Deleted", "The file has been permanently removed.");
+  const handleRename = async (fileId: string, name: string) => {
+    await rename(fileId, name);
+    if (activeSection) await sectionListing.refresh();
   };
 
-  const handleShare = (fileId: string, emails: string[]) => {
-    setFiles((prev) =>
-      prev.map((f) => (f.id === fileId ? { ...f, users: emails } : f))
-    );
+  const handleShare = async (fileId: string, users: string[]) => {
+    await share(fileId, users);
+    if (activeSection) await sectionListing.refresh();
   };
 
-  const handleDownload = (file: CloudFile) => {
-    Alert.alert(
-      "Download Complete",
-      `${file.name}.${file.extension.toLowerCase()} is saved to your device.`
-    );
+  const handleFileUploaded = async (
+    asset: DocumentPicker.DocumentPickerAsset,
+    name?: string,
+  ) => {
+    await upload(asset, name, activeFolderId);
+    if (activeSection) await sectionListing.refresh();
+    Alert.alert("Upload Successful", `"${name || asset.name}" was uploaded.`);
   };
 
-  const handleFileUploaded = (newFile: CloudFile) => {
-    setFiles((prev) => [newFile, ...prev]);
-    Alert.alert(
-      "Upload Successful",
-      `"${newFile.name}" has been uploaded to your workspace.`
-    );
+  const handleCreateFolder = async (name: string) => {
+    if (!activeSection) return;
+    const accessToken = await getAccessToken();
+    await createFolderRequest(accessToken, activeSection, name);
+    await sectionListing.refresh();
+  };
+
+  const handleOpenFolder = (folder: CloudenceFolder) => {
+    setQuery("");
+    setActiveFolderId(folder.id);
   };
 
   return (
     <SafeAreaView style={styles.root} edges={["top", "left", "right"]}>
-      <StatusBar barStyle="dark-content" backgroundColor={theme.colors.background} />
+      <StatusBar barStyle="dark-content" />
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          {
+            width: "100%",
+            maxWidth: layout.contentMaxWidth,
+            alignSelf: "center",
+            paddingHorizontal: layout.horizontalPadding,
+          },
+        ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -137,11 +195,24 @@ export default function FilesScreen() {
 
         {/* Title & Subtitle */}
         <Text style={styles.title}>
-          {selectedCategory === "All" ? "All Files" : selectedCategory}
+          {activeFolderId
+            ? sectionListing.listing.folders.find(
+                (folder) => folder.id === activeFolderId,
+              )?.name ?? selectedCategory
+            : selectedCategory === "All"
+              ? "All Files"
+              : selectedCategory}
         </Text>
         <Text style={styles.subtitle}>
           Manage, share, and preview files in your Cloudence vault.
         </Text>
+
+        <WorkspaceStatus
+          loading={screenLoading}
+          error={screenError}
+          offline={isOffline}
+          onRetry={handleRefresh}
+        />
 
         {/* Live Search */}
         <View style={styles.searchSection}>
@@ -198,6 +269,45 @@ export default function FilesScreen() {
           })}
         </ScrollView>
 
+        {activeSection && !activeFolderId && (
+          <View style={styles.folderSection}>
+            <View style={styles.folderHeading}>
+              <Text style={styles.folderHeadingText}>Folders</Text>
+              <Pressable
+                onPress={() => setIsCreateFolderVisible(true)}
+                style={styles.createFolderButton}
+                accessibilityRole="button"
+                accessibilityLabel="Create folder"
+              >
+                <Plus size={14} color={theme.colors.brandDark} />
+                <Text style={styles.createFolderText}>New folder</Text>
+              </Pressable>
+            </View>
+            <View style={styles.folderGrid}>
+              {sectionListing.listing.folders.map((folder) => (
+                <FolderCard
+                  key={folder.id}
+                  folder={folder}
+                  width={itemWidth}
+                  onPress={handleOpenFolder}
+                />
+              ))}
+            </View>
+          </View>
+        )}
+
+        {activeFolderId && (
+          <Pressable
+            onPress={() => setActiveFolderId(null)}
+            style={styles.folderBreadcrumb}
+            accessibilityRole="button"
+          >
+            <Text style={styles.folderBreadcrumbText}>
+              ‹ Back to {selectedCategory}
+            </Text>
+          </Pressable>
+        )}
+
         {/* Bar: Total size + Sort + ViewToggle */}
         <View style={styles.controlBar}>
           <View>
@@ -253,11 +363,22 @@ export default function FilesScreen() {
               ))}
             </View>
           )
-        ) : (
+        ) : !screenLoading && !screenError ? (
           <EmptyState
             title="No files match your filter"
             message="Try another category filter or search query."
           />
+        ) : null}
+        {activeFolderId && sectionListing.listing.nextOffset !== undefined && (
+          <Pressable
+            onPress={() => void sectionListing.loadMore()}
+            disabled={sectionListing.isLoadingMore}
+            style={styles.loadMoreButton}
+          >
+            <Text style={styles.loadMoreText}>
+              {sectionListing.isLoadingMore ? "Loading more…" : "Load more files"}
+            </Text>
+          </Pressable>
         )}
       </ScrollView>
 
@@ -276,149 +397,22 @@ export default function FilesScreen() {
         onRename={handleRename}
         onDelete={handleDelete}
         onShare={handleShare}
-        onDownload={handleDownload}
+        onDownload={download}
+        onCancelDownload={cancelDownload}
       />
 
       <FileUploadModal
         visible={isUploadModalVisible}
         onClose={() => setIsUploadModalVisible(false)}
         onFileUploaded={handleFileUploaded}
+        uploadProgress={uploadProgress}
+        onCancelUpload={cancelUpload}
+      />
+      <FolderNameModal
+        visible={isCreateFolderVisible}
+        onClose={() => setIsCreateFolderVisible(false)}
+        onCreate={handleCreateFolder}
       />
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
-  },
-  scroll: {
-    flex: 1,
-  },
-  content: {
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 36,
-  },
-  title: {
-    fontSize: 27,
-    fontWeight: "800",
-    color: theme.colors.text,
-    letterSpacing: -0.7,
-    marginTop: 4,
-  },
-  subtitle: {
-    fontSize: 12.5,
-    color: theme.colors.secondaryText,
-    marginTop: 4,
-  },
-  searchSection: {
-    marginTop: 16,
-  },
-  pillList: {
-    gap: 8,
-    paddingVertical: 14,
-  },
-  filterPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 13,
-    paddingVertical: 7.5,
-    borderRadius: theme.radius.full,
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1.2,
-    borderColor: theme.colors.border,
-  },
-  activeFilterPill: {
-    backgroundColor: theme.colors.brand,
-    borderColor: theme.colors.brand,
-  },
-  filterPillText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: theme.colors.secondaryText,
-  },
-  activeFilterPillText: {
-    color: "#FFFFFF",
-  },
-  pillBadge: {
-    backgroundColor: theme.colors.surfaceSubtle,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 8,
-  },
-  activePillBadge: {
-    backgroundColor: "rgba(255, 255, 255, 0.22)",
-  },
-  pillBadgeText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: theme.colors.secondaryText,
-  },
-  activePillBadgeText: {
-    color: "#FFFFFF",
-  },
-  controlBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 16,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderSubtle,
-  },
-  totalLabel: {
-    fontSize: 12.5,
-    color: theme.colors.secondaryText,
-  },
-  totalValue: {
-    fontWeight: "800",
-    color: theme.colors.text,
-  },
-  countLabel: {
-    fontSize: 11,
-    color: theme.colors.mutedText,
-    marginTop: 2,
-  },
-  rightControls: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  sortButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.sm,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  sortButtonText: {
-    fontSize: 11.5,
-    fontWeight: "700",
-    color: theme.colors.brand,
-  },
-  gridContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-  },
-  listContainer: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.lg,
-    paddingHorizontal: 16,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    shadowColor: "rgba(66, 71, 97, 0.05)",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-});

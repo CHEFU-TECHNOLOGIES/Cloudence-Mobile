@@ -1,129 +1,94 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Modal,
-  View,
+  Pressable,
+  ScrollView,
+  StyleSheet,
   Text,
   TextInput,
-  Pressable,
-  StyleSheet,
   TouchableWithoutFeedback,
+  View,
+  useWindowDimensions,
 } from "react-native";
-import {
-  Upload,
-  FileText,
-  Image as ImageIcon,
-  Film,
-  Package,
-  X,
-} from "lucide-react-native";
-import { CloudFile, FileCategory } from "../../types/file";
+import * as DocumentPicker from "expo-document-picker";
+import { FileText, Upload, X } from "lucide-react-native";
 import { theme } from "../../constants/theme";
+import { convertFileSize } from "../../utils/fileUtils";
 
 type Props = {
   visible: boolean;
   onClose: () => void;
-  onFileUploaded: (file: CloudFile) => void;
+  onFileUploaded: (
+    asset: DocumentPicker.DocumentPickerAsset,
+    name?: string,
+  ) => Promise<void>;
+  uploadProgress?: number | null;
+  onCancelUpload?: () => void;
 };
 
-const categoryPresets: {
-  category: FileCategory;
-  extension: string;
-  type: "document" | "image" | "video" | "audio" | "other";
-  icon: any;
-  color: string;
-  bg: string;
-  size: number;
-}[] = [
-  {
-    category: "Documents",
-    extension: "PDF",
-    type: "document",
-    icon: FileText,
-    color: theme.colors.documents.color,
-    bg: theme.colors.documents.background,
-    size: 1.8 * 1024 * 1024,
-  },
-  {
-    category: "Images",
-    extension: "PNG",
-    type: "image",
-    icon: ImageIcon,
-    color: theme.colors.images.color,
-    bg: theme.colors.images.background,
-    size: 2.9 * 1024 * 1024,
-  },
-  {
-    category: "Media",
-    extension: "MP4",
-    type: "video",
-    icon: Film,
-    color: theme.colors.media.color,
-    bg: theme.colors.media.background,
-    size: 14.5 * 1024 * 1024,
-  },
-  {
-    category: "Others",
-    extension: "ZIP",
-    type: "other",
-    icon: Package,
-    color: theme.colors.others.color,
-    bg: theme.colors.others.background,
-    size: 6.2 * 1024 * 1024,
-  },
-];
+function messageFromError(error: unknown) {
+  return error instanceof Error ? error.message : "The file could not be uploaded.";
+}
 
 export default function FileUploadModal({
   visible,
   onClose,
   onFileUploaded,
+  uploadProgress = null,
+  onCancelUpload,
 }: Props) {
-  const [selectedPresetIndex, setSelectedPresetIndex] = useState(0);
+  const { width, height } = useWindowDimensions();
+  const [selectedFile, setSelectedFile] =
+    useState<DocumentPicker.DocumentPickerAsset | null>(null);
   const [fileName, setFileName] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const uploadingRef = useRef(false);
 
-  const activePreset = categoryPresets[selectedPresetIndex];
-
-  const handleUpload = () => {
-    const title = fileName.trim() || `New_${activePreset.category}_File`;
-    setUploading(true);
-    setProgress(0);
-
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setTimeout(() => {
-            const newFile: CloudFile = {
-              id: `file_${Date.now()}`,
-              name: title,
-              extension: activePreset.extension,
-              type: activePreset.type,
-              category: activePreset.category,
-              size: activePreset.size,
-              sizeFormatted: `${(activePreset.size / (1024 * 1024)).toFixed(1)} MB`,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-              owner: {
-                id: "user_cur",
-                fullName: "Alex Morgan",
-                email: "alex.morgan@cloudence.io",
-              },
-              users: [],
-              color: activePreset.color,
-            };
-
-            onFileUploaded(newFile);
-            setUploading(false);
-            setProgress(0);
-            setFileName("");
-            onClose();
-          }, 350);
-          return 100;
-        }
-        return prev + 40;
+  const chooseFile = async () => {
+    setError(null);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        copyToCacheDirectory: true,
+        multiple: false,
+        type: "*/*",
       });
-    }, 180);
+      if (result.canceled) return;
+
+      const asset = result.assets[0];
+      setSelectedFile(asset);
+      setFileName("");
+    } catch (pickerError) {
+      setError(messageFromError(pickerError));
+    }
+  };
+
+  const handleUpload = async () => {
+    if (uploadingRef.current) return;
+    if (!selectedFile) {
+      setError("Choose a file before uploading.");
+      return;
+    }
+
+    uploadingRef.current = true;
+    setUploading(true);
+    setError(null);
+    try {
+      await onFileUploaded(selectedFile, fileName.trim() || undefined);
+      setSelectedFile(null);
+      setFileName("");
+      onClose();
+    } catch (uploadError) {
+      setError(
+        uploadError instanceof Error && uploadError.name === "AbortError"
+          ? "Upload cancelled."
+          : messageFromError(uploadError),
+      );
+    } finally {
+      uploadingRef.current = false;
+      setUploading(false);
+    }
   };
 
   return (
@@ -133,95 +98,145 @@ export default function FileUploadModal({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <TouchableWithoutFeedback onPress={onClose}>
-        <View style={styles.overlay}>
+      <TouchableWithoutFeedback onPress={uploading ? undefined : onClose}>
+        <View
+          style={[
+            styles.overlay,
+            width >= 600 && styles.tabletOverlay,
+          ]}
+        >
           <TouchableWithoutFeedback>
-            <View style={styles.sheet}>
+            <View
+              style={[
+                styles.sheet,
+                {
+                  maxHeight: height * 0.9,
+                  width: width >= 600 ? 560 : "100%",
+                },
+              ]}
+            >
               <View style={styles.header}>
                 <View style={styles.titleRow}>
                   <View style={styles.iconCircle}>
                     <Upload size={18} color="#FFFFFF" />
                   </View>
-                  <View>
+                  <View style={styles.headerText}>
                     <Text style={styles.title}>Upload to Cloudence</Text>
-                    <Text style={styles.subtitle}>Max 50MB per file</Text>
+                    <Text style={styles.subtitle}>Files up to 50 MB</Text>
                   </View>
                 </View>
 
-                <Pressable onPress={onClose} hitSlop={8} style={styles.closeBtn}>
+                <Pressable
+                  onPress={onClose}
+                  disabled={uploading}
+                  hitSlop={8}
+                  style={styles.closeBtn}
+                  accessibilityLabel="Close upload"
+                >
                   <X size={18} color={theme.colors.secondaryText} />
                 </Pressable>
               </View>
 
-              {!uploading ? (
-                <>
-                  <Text style={styles.label}>Select File Category</Text>
-                  <View style={styles.presetsGrid}>
-                    {categoryPresets.map((preset, idx) => {
-                      const Icon = preset.icon;
-                      const isSelected = selectedPresetIndex === idx;
-
-                      return (
-                        <Pressable
-                          key={preset.category}
-                          onPress={() => setSelectedPresetIndex(idx)}
-                          style={[
-                            styles.presetItem,
-                            isSelected && {
-                              borderColor: preset.color,
-                              backgroundColor: preset.bg,
-                            },
-                          ]}
-                        >
-                          <Icon size={20} color={preset.color} />
-                          <Text
-                            style={[
-                              styles.presetText,
-                              isSelected && { color: preset.color, fontWeight: "700" },
-                            ]}
-                          >
-                            {preset.category}
-                          </Text>
-                          <Text style={styles.presetExt}>.{preset.extension.toLowerCase()}</Text>
-                        </Pressable>
-                      );
-                    })}
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.body}
+              >
+                <Text style={styles.label}>Choose a file</Text>
+                <Pressable
+                  onPress={() => void chooseFile()}
+                  disabled={uploading}
+                  style={({ pressed }) => [
+                    styles.filePicker,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <FileText size={20} color={theme.colors.brand} />
+                  <View style={styles.fileDetails}>
+                    <Text numberOfLines={1} style={styles.fileTitle}>
+                      {selectedFile?.name ?? "Browse files on this device"}
+                    </Text>
+                    <Text style={styles.fileSubtitle}>
+                      {selectedFile?.size === undefined
+                        ? "Choose any supported file"
+                        : convertFileSize(selectedFile.size)}
+                    </Text>
                   </View>
+                </Pressable>
 
-                  <Text style={styles.label}>File Name</Text>
-                  <TextInput
-                    value={fileName}
-                    onChangeText={setFileName}
-                    placeholder={`e.g. Project_Brief_${activePreset.extension}`}
-                    placeholderTextColor={theme.colors.mutedText}
-                    style={styles.input}
-                  />
+                {selectedFile && (
+                  <>
+                    <Text style={styles.label}>Optional file name</Text>
+                    <TextInput
+                      value={fileName}
+                      onChangeText={setFileName}
+                      placeholder="Keep the original name"
+                      placeholderTextColor={theme.colors.mutedText}
+                      style={styles.input}
+                      editable={!uploading}
+                      autoCapitalize="none"
+                    />
+                  </>
+                )}
 
-                  <View style={styles.footerButtons}>
-                    <Pressable style={styles.cancelBtn} onPress={onClose}>
-                      <Text style={styles.cancelBtnText}>Cancel</Text>
-                    </Pressable>
-
-                    <Pressable style={styles.uploadSubmitBtn} onPress={handleUpload}>
-                      <Upload size={16} color="#FFFFFF" strokeWidth={2.4} />
-                      <Text style={styles.uploadSubmitBtnText}>Upload Now</Text>
-                    </Pressable>
+                {error && (
+                  <View style={styles.errorBox}>
+                    <Text style={styles.errorText}>{error}</Text>
                   </View>
-                </>
-              ) : (
+                )}
+              </ScrollView>
+
+              {uploading ? (
                 <View style={styles.uploadingBox}>
-                  <View style={styles.progressHeader}>
-                    <Text style={styles.uploadingTitle}>Encrypting & Uploading...</Text>
-                    <Text style={styles.progressPercent}>{progress}%</Text>
+                  <View style={styles.uploadingStatus}>
+                    <ActivityIndicator color={theme.colors.brand} />
+                    <Text style={styles.uploadingText}>
+                      {uploadProgress === null
+                        ? "Uploading your file…"
+                        : `Uploading your file… ${uploadProgress}%`}
+                    </Text>
                   </View>
-
-                  <View style={styles.progressBar}>
-                    <View style={[styles.progressFill, { width: `${progress}%` }]} />
-                  </View>
-
-                  <Text style={styles.progressNote}>
-                    Uploading to Cloudence secure vault via Cloudinary CDN
-                  </Text>
+                  {uploadProgress !== null && (
+                    <View
+                      style={styles.progressTrack}
+                      accessibilityRole="progressbar"
+                      accessibilityValue={{
+                        min: 0,
+                        max: 100,
+                        now: uploadProgress,
+                      }}
+                    >
+                      <View
+                        style={[
+                          styles.progressFill,
+                          { width: `${uploadProgress}%` },
+                        ]}
+                      />
+                    </View>
+                  )}
+                  <Pressable
+                    onPress={onCancelUpload}
+                    style={styles.cancelUploadButton}
+                  >
+                    <Text style={styles.cancelBtnText}>Cancel upload</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={styles.footerButtons}>
+                  <Pressable style={styles.cancelBtn} onPress={onClose}>
+                    <Text style={styles.cancelBtnText}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.uploadSubmitBtn,
+                      !selectedFile && styles.disabledButton,
+                    ]}
+                    disabled={!selectedFile}
+                    onPress={() => void handleUpload()}
+                  >
+                    <Upload size={16} color="#FFFFFF" strokeWidth={2.4} />
+                    <Text style={styles.uploadSubmitBtnText}>Upload file</Text>
+                  </Pressable>
                 </View>
               )}
             </View>
@@ -235,22 +250,27 @@ export default function FileUploadModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(4, 5, 12, 0.45)",
     justifyContent: "flex-end",
+    backgroundColor: "rgba(4, 5, 12, 0.45)",
+  },
+  tabletOverlay: {
+    justifyContent: "center",
+    paddingHorizontal: 24,
   },
   sheet: {
+    alignSelf: "center",
     backgroundColor: theme.colors.surface,
     borderTopLeftRadius: theme.radius.xl,
     borderTopRightRadius: theme.radius.xl,
     paddingHorizontal: 20,
     paddingTop: 18,
-    paddingBottom: 34,
+    paddingBottom: 24,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 20,
+    marginBottom: 18,
     paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.borderSubtle,
@@ -259,6 +279,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    flex: 1,
+    minWidth: 0,
+  },
+  headerText: {
+    flex: 1,
+    minWidth: 0,
   },
   iconCircle: {
     width: 36,
@@ -281,35 +307,40 @@ const styles = StyleSheet.create({
   closeBtn: {
     padding: 6,
   },
+  body: {
+    paddingBottom: 8,
+  },
   label: {
     fontSize: 12,
     fontWeight: "700",
     color: theme.colors.secondaryText,
     marginBottom: 8,
   },
-  presetsGrid: {
+  filePicker: {
     flexDirection: "row",
-    gap: 8,
-    marginBottom: 16,
-  },
-  presetItem: {
-    flex: 1,
     alignItems: "center",
-    paddingVertical: 12,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     borderRadius: theme.radius.md,
     backgroundColor: theme.colors.surfaceSubtle,
-    borderWidth: 1.5,
-    borderColor: theme.colors.border,
-    gap: 4,
+    minHeight: 68,
+    paddingHorizontal: 14,
+    marginBottom: 18,
   },
-  presetText: {
-    fontSize: 11,
-    fontWeight: "600",
+  fileDetails: {
+    flex: 1,
+    minWidth: 0,
+  },
+  fileTitle: {
     color: theme.colors.text,
+    fontSize: 13,
+    fontWeight: "700",
   },
-  presetExt: {
-    fontSize: 9,
+  fileSubtitle: {
     color: theme.colors.secondaryText,
+    fontSize: 11,
+    marginTop: 3,
   },
   input: {
     height: 48,
@@ -320,11 +351,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.text,
     backgroundColor: theme.colors.surfaceSubtle,
-    marginBottom: 20,
+    marginBottom: 12,
+  },
+  errorBox: {
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    borderRadius: theme.radius.sm,
+    backgroundColor: "#FEF2F2",
+    padding: 12,
+    marginBottom: 12,
+  },
+  errorText: {
+    color: theme.colors.error,
+    fontSize: 12,
+    lineHeight: 18,
   },
   footerButtons: {
     flexDirection: "row",
     gap: 12,
+    paddingTop: 12,
   },
   cancelBtn: {
     flex: 1,
@@ -350,45 +395,49 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
   },
+  disabledButton: {
+    opacity: 0.5,
+  },
+  pressed: {
+    opacity: 0.82,
+  },
   uploadSubmitBtnText: {
     fontSize: 13,
     fontWeight: "700",
     color: "#FFFFFF",
   },
   uploadingBox: {
+    flexDirection: "column",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 10,
     paddingVertical: 16,
   },
-  progressHeader: {
+  uploadingStatus: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "center",
     alignItems: "center",
-    marginBottom: 10,
+    gap: 10,
   },
-  uploadingTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: theme.colors.text,
-  },
-  progressPercent: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: theme.colors.brandDark,
-  },
-  progressBar: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: theme.colors.borderSubtle,
+  progressTrack: {
+    width: "100%",
+    height: 6,
     overflow: "hidden",
+    borderRadius: theme.radius.full,
+    backgroundColor: theme.colors.borderSubtle,
   },
   progressFill: {
     height: "100%",
+    borderRadius: theme.radius.full,
     backgroundColor: theme.colors.brand,
-    borderRadius: 4,
   },
-  progressNote: {
-    fontSize: 11,
+  cancelUploadButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  uploadingText: {
     color: theme.colors.secondaryText,
-    marginTop: 10,
-    textAlign: "center",
+    fontSize: 13,
+    fontWeight: "600",
   },
 });

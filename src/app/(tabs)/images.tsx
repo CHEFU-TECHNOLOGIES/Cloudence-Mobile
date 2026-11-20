@@ -7,7 +7,6 @@ import {
   Text,
   View,
   Pressable,
-  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ArrowDownUp } from "lucide-react-native";
@@ -21,15 +20,32 @@ import ViewToggle from "../../components/cloudence/ViewToggle";
 import SortModal from "../../components/cloudence/SortModal";
 import FileActionModal from "../../components/cloudence/FileActionModal";
 import FileUploadModal from "../../components/cloudence/FileUploadModal";
+import WorkspaceStatus from "../../components/cloudence/WorkspaceStatus";
 
-import { mockFiles as initialFiles } from "../../data/mockFiles";
+import { useCloudenceData } from "../../data/CloudenceDataProvider";
 import { theme } from "../../constants/theme";
 import { CloudFile, SortType, ViewType } from "../../types/file";
 import { convertFileSize, sortFiles } from "../../utils/fileUtils";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import * as DocumentPicker from "expo-document-picker";
 
 export default function ImagesScreen() {
-  const { width: screenWidth } = useWindowDimensions();
-  const [files, setFiles] = useState<CloudFile[]>(initialFiles);
+  const layout = useResponsiveLayout();
+  const {
+    files,
+    isLoading,
+    isOffline,
+    error,
+    refresh,
+    rename,
+    remove,
+    share,
+    upload,
+    download,
+    uploadProgress,
+    cancelUpload,
+    cancelDownload,
+  } = useCloudenceData();
   const [query, setQuery] = useState("");
   const [currentSort, setCurrentSort] = useState<SortType>("$createdAt-desc");
   const [currentView, setCurrentView] = useState<ViewType>("grid");
@@ -38,13 +54,7 @@ export default function ImagesScreen() {
   const [selectedFileForAction, setSelectedFileForAction] = useState<CloudFile | null>(null);
   const [isActionModalVisible, setIsActionModalVisible] = useState(false);
 
-  // Responsive column calculation
-  const numColumns = screenWidth >= 600 ? 3 : 2;
-  const horizontalPadding = 40;
-  const gap = 12;
-  const itemWidth = Math.floor(
-    (screenWidth - horizontalPadding - (numColumns - 1) * gap) / numColumns
-  );
+  const itemWidth = layout.cardWidth;
 
   const imageFiles = useMemo(() => {
     const filtered = files.filter(
@@ -66,38 +76,33 @@ export default function ImagesScreen() {
     setIsActionModalVisible(true);
   };
 
-  const handleRename = (fileId: string, newName: string) => {
-    setFiles((prev) =>
-      prev.map((f) => (f.id === fileId ? { ...f, name: newName } : f))
-    );
+  const handleDelete = async (fileId: string) => {
+    await remove(fileId);
+    Alert.alert("Image Deleted", "The image file was removed.");
   };
 
-  const handleDelete = (fileId: string) => {
-    setFiles((prev) => prev.filter((f) => f.id !== fileId));
-    Alert.alert("Image Deleted", "The image file has been deleted.");
-  };
-
-  const handleShare = (fileId: string, emails: string[]) => {
-    setFiles((prev) =>
-      prev.map((f) => (f.id === fileId ? { ...f, users: emails } : f))
-    );
-  };
-
-  const handleDownload = (file: CloudFile) => {
-    Alert.alert("Downloaded", `${file.name}.${file.extension} downloaded.`);
-  };
-
-  const handleFileUploaded = (newFile: CloudFile) => {
-    setFiles((prev) => [newFile, ...prev]);
+  const handleFileUploaded = async (
+    asset: DocumentPicker.DocumentPickerAsset,
+    name?: string,
+  ) => {
+    await upload(asset, name);
   };
 
   return (
     <SafeAreaView style={styles.root} edges={["top", "left", "right"]}>
-      <StatusBar barStyle="dark-content" backgroundColor={theme.colors.background} />
+      <StatusBar barStyle="dark-content" />
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          {
+            width: "100%",
+            maxWidth: layout.contentMaxWidth,
+            alignSelf: "center",
+            paddingHorizontal: layout.horizontalPadding,
+          },
+        ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -107,6 +112,13 @@ export default function ImagesScreen() {
         <Text style={styles.subtitle}>
           Lossless visual storage with fast CDN thumbnail previews.
         </Text>
+
+        <WorkspaceStatus
+          loading={isLoading}
+          error={error}
+          offline={isOffline}
+          onRetry={refresh}
+        />
 
         <View style={styles.searchSection}>
           <SearchBar value={query} onChangeText={setQuery} />
@@ -162,12 +174,12 @@ export default function ImagesScreen() {
               ))}
             </View>
           )
-        ) : (
+        ) : !isLoading && !error ? (
           <EmptyState
             title="No images found"
             message="Upload PNG, JPG, WebP, or SVG graphics to this vault."
           />
-        )}
+        ) : null}
       </ScrollView>
 
       {/* Modals */}
@@ -182,16 +194,19 @@ export default function ImagesScreen() {
         visible={isActionModalVisible}
         file={selectedFileForAction}
         onClose={() => setIsActionModalVisible(false)}
-        onRename={handleRename}
+        onRename={rename}
         onDelete={handleDelete}
-        onShare={handleShare}
-        onDownload={handleDownload}
+        onShare={share}
+        onDownload={download}
+        onCancelDownload={cancelDownload}
       />
 
       <FileUploadModal
         visible={isUploadModalVisible}
         onClose={() => setIsUploadModalVisible(false)}
         onFileUploaded={handleFileUploaded}
+        uploadProgress={uploadProgress}
+        onCancelUpload={cancelUpload}
       />
     </SafeAreaView>
   );
