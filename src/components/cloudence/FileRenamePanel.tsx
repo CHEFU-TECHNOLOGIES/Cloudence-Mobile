@@ -1,5 +1,10 @@
 import { useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import {
+  Pressable,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { theme } from "../../constants/theme";
 import { CloudFile } from "../../types/file";
 import { styles } from "./FileActionModal.styles";

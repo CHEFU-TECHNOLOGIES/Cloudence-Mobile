@@ -1,4 +1,10 @@
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  Modal,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { theme } from "../../constants/theme";
 
 type Props = {
@@ -26,7 +32,10 @@ export default function ConfirmDialog({
 
   const content = (
     <View style={[styles.backdrop, embedded && styles.embeddedBackdrop]}>
-      <Pressable style={StyleSheet.absoluteFill} onPress={onCancel} />
+      <Pressable
+        style={StyleSheet.absoluteFill}
+        onPress={onCancel}
+      />
       <View style={styles.dialog} accessibilityRole="alert">
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.message}>{message}</Text>

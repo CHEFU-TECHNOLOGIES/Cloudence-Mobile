@@ -1,11 +1,11 @@
 import React from "react";
 import {
-    View,
-    Text,
-    Pressable,
-    StyleSheet,
-    Image,
-    useWindowDimensions,
+  Pressable,
+  View,
+  Text,
+  StyleSheet,
+  Image,
+  useWindowDimensions,
 } from "react-native";
 import { Plus, Bell } from "lucide-react-native";
 import { theme } from "../../constants/theme";

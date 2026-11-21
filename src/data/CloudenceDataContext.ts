@@ -18,17 +18,21 @@ export type CloudenceDataContextValue = {
   cancelDownload: () => void;
   refresh: () => Promise<boolean>;
   rename: (fileId: string, name: string) => Promise<void>;
-  remove: (fileId: string) => Promise<void>;
+  remove: (
+    fileId: string,
+    refreshAfter?: boolean,
+    fallbackFile?: CloudFile,
+  ) => Promise<void>;
   share: (
     fileId: string,
     users: string[],
-    shareExpiresAt?: string | null,
+    userExpiration?: { email: string; expiresAt: string | null },
   ) => Promise<void>;
   upload: (
     asset: DocumentPicker.DocumentPickerAsset,
     name?: string,
     folderId?: string | null,
-  ) => Promise<void>;
+  ) => Promise<CloudFile>;
   download: (
     file: CloudFile,
     onProgress?: (progress: number | null) => void,

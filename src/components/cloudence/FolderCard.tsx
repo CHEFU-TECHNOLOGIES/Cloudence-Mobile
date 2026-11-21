@@ -1,5 +1,10 @@
-import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useRef } from "react";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { ChevronRight, FolderOpen } from "lucide-react-native";
 import { theme } from "../../constants/theme";
 import { CloudenceFolder } from "../../lib/api/folders";
@@ -8,19 +13,45 @@ type Props = {
   folder: CloudenceFolder;
   width: number;
   onPress: (folder: CloudenceFolder) => void;
+  onLongPress?: (folder: CloudenceFolder) => void;
+  pending?: boolean;
 };
 
-export default function FolderCard({ folder, width, onPress }: Props) {
+export default function FolderCard({
+  folder,
+  width,
+  onPress,
+  onLongPress,
+  pending = false,
+}: Props) {
+  const longPressHandled = useRef(false);
   return (
     <Pressable
-      onPress={() => onPress(folder)}
+      onPress={() => {
+        if (longPressHandled.current) {
+          longPressHandled.current = false;
+          return;
+        }
+        onPress(folder);
+      }}
+      onLongPress={() => {
+        longPressHandled.current = true;
+        onLongPress?.(folder);
+      }}
+      delayLongPress={450}
+      disabled={pending}
       style={({ pressed }) => [
         styles.card,
         { width },
-        pressed && { opacity: 0.75 },
+        pending && styles.pendingCard,
+        pressed && !pending && { opacity: 0.75 },
       ]}
-      accessibilityRole="button"
-      accessibilityLabel={`Open ${folder.name} folder`}
+      accessibilityRole={pending ? "summary" : "button"}
+      accessibilityLabel={
+        pending
+          ? `Creating ${folder.name} folder`
+          : `${folder.name} folder. Tap to open, or press and hold for options.`
+      }
     >
       <View style={styles.iconBox}>
         <FolderOpen size={19} color={theme.colors.brand} />
@@ -29,7 +60,7 @@ export default function FolderCard({ folder, width, onPress }: Props) {
         <Text numberOfLines={1} style={styles.name}>
           {folder.name}
         </Text>
-        <Text style={styles.label}>Folder</Text>
+        <Text style={styles.label}>{pending ? "Creating…" : "Folder"}</Text>
       </View>
       <ChevronRight size={17} color={theme.colors.secondaryText} />
     </Pressable>
@@ -48,6 +79,7 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface,
   },
+  pendingCard: { opacity: 0.65 },
   iconBox: {
     width: 36,
     height: 36,

@@ -1,22 +1,20 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { ChevronLeft } from "lucide-react-native";
-import { Pressable, ScrollView, StatusBar, Text, View } from "react-native";
+import {
+  Pressable,
+  ScrollView,
+  StatusBar,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { notificationsSettingsStyles as styles } from "../components/cloudence/NotificationsSettingsScreen.styles";
 import { theme } from "../constants/theme";
 import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
-import {
-  setCollaboratorActivityEnabled,
-  setQuotaAlertsEnabled,
-  useWorkspacePreferences,
-} from "../hooks/useWorkspacePreferences";
+import { setCollaboratorActivityEnabled, setQuotaAlertsEnabled, useWorkspacePreferences } from "../hooks/useWorkspacePreferences";
 import { useSession } from "../auth/SessionContext";
-import {
-  getPushPermissionGranted,
-  requestAndRegisterPushDevice,
-  syncPushPreferences,
-} from "../lib/notifications/pushNotifications";
+import { getPushPermissionGranted, requestAndRegisterPushDevice, syncPushPreferences } from "../lib/notifications/pushNotifications";
 import { useToast } from "../components/cloudence/ToastProvider";
 
 export default function NotificationsSettingsScreen() {

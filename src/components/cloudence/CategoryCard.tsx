@@ -1,4 +1,9 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { theme } from "../../constants/theme";
 import { FileCategory } from "../../types/file";
 import { convertFileSize } from "../../utils/fileUtils";

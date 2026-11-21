@@ -95,9 +95,21 @@ export function parseCloudFile(value: unknown): CloudFile {
   ) {
     throw new Error("The file response contains an invalid sharing list.");
   }
+  const userExpirations = isRecord(value.shareExpiresAtByUser)
+    ? value.shareExpiresAtByUser
+    : undefined;
+  if (
+    userExpirations &&
+    Object.values(userExpirations).some(
+      (expiresAt) => expiresAt !== null && typeof expiresAt !== "string",
+    )
+  ) {
+    throw new Error("The file response contains invalid collaborator expirations.");
+  }
 
   const file: CloudFile = {
     id: requiredString(value.id, "an id"),
+    ...(value.duplicate === true ? { duplicate: true } : {}),
     name: requiredString(value.name, "a name"),
     extension: requiredString(value.extension, "an extension"),
     type,
@@ -114,6 +126,10 @@ export function parseCloudFile(value: unknown): CloudFile {
     users,
     shareExpiresAt:
       typeof value.shareExpiresAt === "string" ? value.shareExpiresAt : undefined,
+    shareExpiresAtByUser:
+      userExpirations
+        ? (userExpirations as Record<string, string | null>)
+        : undefined,
     url: typeof value.url === "string" ? value.url : undefined,
     folderId: typeof value.folderId === "string" ? value.folderId : undefined,
   };
@@ -191,7 +207,7 @@ export async function updateFileSharing(
   accessToken: string,
   fileId: string,
   users: string[],
-  shareExpiresAt?: string | null,
+  userExpiration?: { email: string; expiresAt: string | null },
 ) {
   const updated = await apiRequest<unknown>(
     `/cloudence/files/${encodeURIComponent(fileId)}`,
@@ -200,10 +216,8 @@ export async function updateFileSharing(
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        users,
-        ...(shareExpiresAt !== undefined
-          ? { shareExpiresAt: shareExpiresAt ?? "" }
-          : {}),
+        ...(userExpiration === undefined ? { users } : {}),
+        ...(userExpiration !== undefined ? { userExpiration } : {}),
       }),
     },
   );

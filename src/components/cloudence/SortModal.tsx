@@ -1,9 +1,9 @@
 import React from "react";
 import {
+  Pressable,
   Modal,
   View,
   Text,
-  Pressable,
   StyleSheet,
   TouchableWithoutFeedback,
 } from "react-native";

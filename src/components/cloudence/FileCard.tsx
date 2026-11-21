@@ -1,37 +1,79 @@
 import { MoreVertical, Users } from "lucide-react-native";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useRef } from "react";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { theme } from "../../constants/theme";
 import { CloudFile } from "../../types/file";
 import { convertFileSize, formatDateTime } from "../../utils/fileUtils";
 import FileThumbnail from "./FileThumbnail";
+import FileSelectionCheckbox from "./FileSelectionCheckbox";
 
 type Props = {
     file: CloudFile;
     onPress?: (file: CloudFile) => void;
     onMore?: (file: CloudFile) => void;
+    onLongPress?: (file: CloudFile) => void;
+    onToggleSelection?: (file: CloudFile) => void;
+    selectionMode?: boolean;
+    selected?: boolean;
     width?: number | string;
 };
 
-export default function FileCard({ file, onPress, onMore, width }: Props) {
+export default function FileCard({
+    file,
+    onPress,
+    onMore,
+    onLongPress,
+    onToggleSelection,
+    selectionMode = false,
+    selected = false,
+    width,
+}: Props) {
+    const longPressHandled = useRef(false);
     const ownerInitial = file.owner.fullName
         ? file.owner.fullName.charAt(0).toUpperCase()
         : "U";
 
     return (
         <Pressable
-            onPress={() => onPress?.(file)}
+            onPress={() => {
+                if (longPressHandled.current) {
+                    longPressHandled.current = false;
+                    return;
+                }
+                if (selectionMode) onToggleSelection?.(file);
+                else onPress?.(file);
+            }}
+            onLongPress={() => {
+                longPressHandled.current = true;
+                onLongPress?.(file);
+            }}
+            delayLongPress={450}
             style={({ pressed }) => [
                 styles.card,
                 width !== undefined && { width },
+                selected && styles.selectedCard,
                 pressed && { transform: [{ scale: 0.975 }], opacity: 0.9 },
             ]}
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
         >
             {/* Top Section */}
             <View style={styles.topRow}>
                 <FileThumbnail file={file} style={styles.thumbnail} />
 
                 <View style={styles.topRight}>
-                    <Pressable
+                    {selectionMode ? (
+                        <FileSelectionCheckbox
+                            selected={selected}
+                            fileName={file.name}
+                            onPress={() => onToggleSelection?.(file)}
+                        />
+                    ) : <Pressable
                         hitSlop={8}
                         onPress={(e) => {
                             e.stopPropagation();
@@ -49,7 +91,7 @@ export default function FileCard({ file, onPress, onMore, width }: Props) {
                             size={17}
                             color={theme.colors.secondaryText}
                         />
-                    </Pressable>
+                    </Pressable>}
                     <Text style={styles.sizeText}>
                         {convertFileSize(file.size)}
                     </Text>
@@ -104,6 +146,10 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.1,
         shadowRadius: 6,
         elevation: 2,
+    },
+    selectedCard: {
+        borderColor: theme.colors.brand,
+        backgroundColor: theme.colors.brandLight,
     },
     topRow: {
         flexDirection: "row",

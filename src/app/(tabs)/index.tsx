@@ -16,6 +16,7 @@ import EmptyState from "../../components/cloudence/EmptyState";
 import FileActionModal from "../../components/cloudence/FileActionModal";
 import FileUploadModal from "../../components/cloudence/FileUploadModal";
 import RecentFiles from "../../components/cloudence/RecentFiles";
+import BulkFileSelectionActions from "../../components/cloudence/BulkFileSelectionActions";
 import SearchBar from "../../components/cloudence/SearchBar";
 import StorageCard from "../../components/cloudence/StorageCard";
 import WorkspaceStatus from "../../components/cloudence/WorkspaceStatus";
@@ -27,6 +28,8 @@ import * as DocumentPicker from "expo-document-picker";
 import { theme } from "../../constants/theme";
 import { useCloudenceData } from "../../data/CloudenceDataProvider";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { useFileSelection } from "../../hooks/useFileSelection";
+import { useBulkFileActions } from "../../hooks/useBulkFileActions";
 import { CloudFile, FileCategory } from "../../types/file";
 
 export default function DashboardScreen() {
@@ -102,7 +105,15 @@ export default function DashboardScreen() {
     asset: DocumentPicker.DocumentPickerAsset,
     name?: string,
   ) => {
-    await upload(asset, name);
+    const uploaded = await upload(asset, name);
+    if (uploaded?.duplicate) {
+      showToast({
+        title: "Duplicate skipped",
+        message: "An identical file already exists in your workspace.",
+        variant: "info",
+      });
+      return;
+    }
     showToast({
       title: "Upload successful",
       message: `“${name || asset.name}” has been uploaded to your Cloudence workspace.`,
@@ -124,6 +135,16 @@ export default function DashboardScreen() {
   const displayedRecentFiles = query.trim()
     ? filteredFiles.slice(0, 5)
     : recentFiles;
+  const selection = useFileSelection(displayedRecentFiles);
+  const bulkActions = useBulkFileActions({
+    removeFile: remove,
+    refreshListing: refresh,
+    optimisticallyMove: () => () => {},
+  });
+  const handleBulkDelete = (filesToDelete: CloudFile[]) => {
+    selection.clear();
+    void bulkActions.deleteFiles(filesToDelete);
+  };
   const totalUsedBytes = usage?.used ?? 0;
   const totalStorageBytes = usage?.all ?? 0;
   const isInitialLoading = isLoading && files.length === 0 && !usage && !error;
@@ -141,6 +162,7 @@ export default function DashboardScreen() {
             maxWidth: layout.contentMaxWidth,
             alignSelf: "center",
             paddingHorizontal: layout.horizontalPadding,
+            paddingBottom: selection.selectionMode ? 112 : 44,
           },
         ]}
         showsVerticalScrollIndicator={false}
@@ -205,6 +227,10 @@ export default function DashboardScreen() {
                   onSeeAll={() => router.push("/files")}
                   onFilePress={handleOpenFile}
                   onFileMore={handleOpenActionMenu}
+                  selectionMode={selection.selectionMode}
+                  selectedIds={selection.selectedIds}
+                  onLongPress={selection.selectOnLongPress}
+                  onToggleSelection={selection.toggle}
                 />
               )}
           </>
@@ -219,6 +245,18 @@ export default function DashboardScreen() {
             />
           )}
       </ScrollView>
+
+      {selection.selectionMode && (
+        <BulkFileSelectionActions
+          files={selection.selectedFiles}
+          canMove={false}
+          folders={[]}
+          currentFolderId={null}
+          onMove={() => {}}
+          onDelete={handleBulkDelete}
+          onCancel={selection.clear}
+        />
+      )}
 
       {/* Interactive Action Modals */}
       <FileActionModal

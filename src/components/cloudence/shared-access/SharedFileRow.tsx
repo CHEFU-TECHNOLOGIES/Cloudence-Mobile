@@ -1,5 +1,10 @@
 import { ChevronRight } from "lucide-react-native";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { CloudFile } from "../../../types/file";
 import { theme } from "../../../constants/theme";
 import FileThumbnail from "../FileThumbnail";

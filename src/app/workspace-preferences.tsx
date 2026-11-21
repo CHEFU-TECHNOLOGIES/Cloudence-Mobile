@@ -1,13 +1,16 @@
 import { router } from "expo-router";
 import { ChevronLeft } from "lucide-react-native";
-import { Pressable, ScrollView, StatusBar, Text, View } from "react-native";
+import {
+  Pressable,
+  ScrollView,
+  StatusBar,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { theme } from "../constants/theme";
 import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
-import {
-  setDefaultFileView,
-  useWorkspacePreferences,
-} from "../hooks/useWorkspacePreferences";
+import { setDefaultFileView, useWorkspacePreferences } from "../hooks/useWorkspacePreferences";
 import { workspacePreferencesStyles as styles } from "../components/cloudence/WorkspacePreferencesScreen.styles";
 
 export default function WorkspacePreferencesScreen() {

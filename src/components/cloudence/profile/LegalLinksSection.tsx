@@ -1,4 +1,9 @@
-import { Linking, Pressable, Text, View } from "react-native";
+import {
+  Pressable,
+  Linking,
+  Text,
+  View,
+} from "react-native";
 import { ExternalLink } from "lucide-react-native";
 import { theme } from "../../../constants/theme";
 import { profileStyles as styles } from "../ProfileScreen.styles";

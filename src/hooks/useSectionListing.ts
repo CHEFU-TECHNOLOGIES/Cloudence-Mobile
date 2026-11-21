@@ -18,6 +18,17 @@ const EMPTY_LISTING: SectionListing = {
   files: [],
   folders: [],
 };
+const memoryListingCache = new Map<string, SectionListing>();
+const MAX_MEMORY_LISTINGS = 20;
+
+function rememberListing(key: string, listing: SectionListing) {
+  memoryListingCache.delete(key);
+  memoryListingCache.set(key, listing);
+  if (memoryListingCache.size > MAX_MEMORY_LISTINGS) {
+    const oldestKey = memoryListingCache.keys().next().value;
+    if (oldestKey) memoryListingCache.delete(oldestKey);
+  }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -79,9 +90,12 @@ export function useSectionListing(
   const userId = user?.id ?? null;
   const cacheKey = section ? `section:${section}:${folderId ?? "root"}` : "";
   const stateKey = userId && cacheKey ? `${userId}:${cacheKey}` : "";
-  const [storedKey, setStoredKey] = useState("");
-  const [listing, setListing] = useState<SectionListing>(EMPTY_LISTING);
-  const [isLoading, setIsLoading] = useState(false);
+  const initialListing = stateKey ? memoryListingCache.get(stateKey) : undefined;
+  const [storedKey, setStoredKey] = useState(initialListing ? stateKey : "");
+  const [listing, setListing] = useState<SectionListing>(
+    initialListing ?? EMPTY_LISTING,
+  );
+  const [isLoading, setIsLoading] = useState(Boolean(section && !initialListing));
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,9 +113,20 @@ export function useSectionListing(
       const request = (async (): Promise<boolean> => {
         try {
           if (!force) {
+            const memoryCached = memoryListingCache.get(stateKey);
+            if (memoryCached) {
+              storedKeyRef.current = stateKey;
+              hasListingRef.current = true;
+              setStoredKey(stateKey);
+              setListing(memoryCached);
+              setError(null);
+              return true;
+            }
+
             const cached = await readMetadataCache(userId, cacheKey);
             if (signal?.aborted) return true;
             if (cached && isCachedListing(cached.payload)) {
+              rememberListing(stateKey, cached.payload);
               storedKeyRef.current = stateKey;
               hasListingRef.current = true;
               setStoredKey(stateKey);
@@ -130,6 +155,7 @@ export function useSectionListing(
           );
           if (signal?.aborted) return true;
 
+          rememberListing(stateKey, nextListing);
           storedKeyRef.current = stateKey;
           hasListingRef.current = true;
           setStoredKey(stateKey);
@@ -216,10 +242,15 @@ export function useSectionListing(
       if (controller.signal.aborted) return;
 
       const combined: SectionListing = {
-        files: [...listing.files, ...nextPage.files],
+        files: [
+          ...new Map(
+            [...listing.files, ...nextPage.files].map((file) => [file.id, file]),
+          ).values(),
+        ],
         folders: nextPage.folders,
         nextOffset: nextPage.nextOffset,
       };
+      rememberListing(stateKey, combined);
       setListing(combined);
       setError(null);
       await writeMetadataCache(userId, cacheKey, withoutSignedUrls(combined));
@@ -244,24 +275,211 @@ export function useSectionListing(
     cacheKey,
     folderId,
     getAccessToken,
-    isLoadingMore,
     isOffline,
     listing,
     section,
     showToast,
+    stateKey,
     userId,
   ]);
 
+  const moveFilesOptimistically = useCallback(
+    (files: CloudFile[], destinationFolderId: string | null) => {
+      if (!section || !userId || !files.length) return (_ids?: string[]) => {};
+
+      const listingPrefix = `${userId}:section:${section}:`;
+      const applyMove = (
+        movingFiles: CloudFile[],
+        destination: string | null,
+      ) => {
+        const movingById = new Map(movingFiles.map((file) => [file.id, file]));
+        const cachedEntries = [...memoryListingCache.entries()];
+
+        for (const [key, cachedListing] of cachedEntries) {
+          if (!key.startsWith(listingPrefix)) continue;
+          const listingFolderId = key.slice(listingPrefix.length);
+          let nextFiles: CloudFile[];
+
+          if (listingFolderId === "root") {
+            nextFiles = cachedListing.files.map((file) => {
+              if (!movingById.has(file.id)) return file;
+              return { ...file, folderId: destination ?? undefined };
+            });
+          } else {
+            nextFiles = cachedListing.files.filter(
+              (file) => !movingById.has(file.id) || destination === listingFolderId,
+            );
+            if (destination === listingFolderId) {
+              const existingIds = new Set(nextFiles.map((file) => file.id));
+              nextFiles = [
+                ...nextFiles,
+                ...movingFiles
+                  .filter((file) => !existingIds.has(file.id))
+                  .map((file) => ({ ...file, folderId: destination })),
+              ];
+            }
+          }
+
+          const nextListing = { ...cachedListing, files: nextFiles };
+          rememberListing(key, nextListing);
+          if (key === stateKey) setListing(nextListing);
+          void writeMetadataCache(
+            userId,
+            key.slice(userId.length + 1),
+            withoutSignedUrls(nextListing),
+          ).catch((cacheError: unknown) => {
+            console.warn("Could not update the folder listing cache.", cacheError);
+          });
+        }
+      };
+
+      applyMove(files, destinationFolderId);
+      const previousFolderById = new Map(
+        files.map((file) => [file.id, file.folderId ?? null]),
+      );
+
+      return (rollbackIds?: string[]) => {
+        const idsToRestore = rollbackIds
+          ? new Set(rollbackIds)
+          : new Set(previousFolderById.keys());
+        const filesToRestore = files
+          .filter((file) => idsToRestore.has(file.id))
+          .map((file) => ({
+            ...file,
+            folderId: previousFolderById.get(file.id) ?? undefined,
+          }));
+        applyMove(
+          filesToRestore,
+          filesToRestore[0]?.folderId ?? null,
+        );
+      };
+    },
+    [section, stateKey, userId],
+  );
+
+  const updateFolderOptimistically = useCallback(
+    (folderId: string, name: string | null) => {
+      if (!section || !userId) return () => {};
+      const listingPrefix = `${userId}:section:${section}:`;
+      const previousListings = new Map<string, SectionListing>();
+
+      const apply = (nextName: string | null) => {
+        for (const [key, cachedListing] of [...memoryListingCache.entries()]) {
+          if (!key.startsWith(listingPrefix)) continue;
+          const cachedFolderId = key.slice(listingPrefix.length);
+          const folder = cachedListing.folders.find((item) => item.id === folderId);
+          const files =
+            nextName === null && cachedFolderId === folderId
+              ? []
+              : cachedListing.files.map((file) =>
+                  nextName === null && file.folderId === folderId
+                    ? { ...file, folderId: undefined }
+                    : file,
+                );
+          const folders =
+            nextName === null
+              ? cachedListing.folders.filter((item) => item.id !== folderId)
+              : cachedListing.folders.map((item) =>
+                  item.id === folderId ? { ...item, name: nextName } : item,
+                );
+          if (!folder && files === cachedListing.files && folders === cachedListing.folders) {
+            continue;
+          }
+          if (!previousListings.has(key)) previousListings.set(key, cachedListing);
+          const nextListing = { ...cachedListing, files, folders };
+          rememberListing(key, nextListing);
+          if (key === stateKey) setListing(nextListing);
+          void writeMetadataCache(
+            userId,
+            key.slice(userId.length + 1),
+            withoutSignedUrls(nextListing),
+          ).catch((cacheError: unknown) => {
+            console.warn("Could not update the folder listing cache.", cacheError);
+          });
+        }
+      };
+
+      apply(name);
+      return () => {
+        for (const [key, previousListing] of previousListings) {
+          rememberListing(key, previousListing);
+          if (key === stateKey) setListing(previousListing);
+          void writeMetadataCache(
+            userId,
+            key.slice(userId.length + 1),
+            withoutSignedUrls(previousListing),
+          ).catch((cacheError: unknown) => {
+            console.warn("Could not restore the folder listing cache.", cacheError);
+          });
+        }
+      };
+    },
+    [section, stateKey, userId],
+  );
+
+  const updateFilesOptimistically = useCallback(
+    (fileId: string, update: (file: CloudFile) => CloudFile) => {
+      if (!section || !userId) return () => {};
+      const listingPrefix = `${userId}:section:${section}:`;
+      const previousListings = new Map<string, SectionListing>();
+      for (const [key, cachedListing] of [...memoryListingCache.entries()]) {
+        if (!key.startsWith(listingPrefix)) continue;
+        let changed = false;
+        const files = cachedListing.files.map((file) => {
+          if (file.id !== fileId) return file;
+          changed = true;
+          return update(file);
+        });
+        if (!changed) continue;
+        previousListings.set(key, cachedListing);
+        const nextListing = { ...cachedListing, files };
+        rememberListing(key, nextListing);
+        if (key === stateKey) setListing(nextListing);
+        void writeMetadataCache(
+          userId,
+          key.slice(userId.length + 1),
+          withoutSignedUrls(nextListing),
+        ).catch((cacheError: unknown) => {
+          console.warn("Could not update the folder listing cache.", cacheError);
+        });
+      }
+      return () => {
+        for (const [key, previousListing] of previousListings) {
+          rememberListing(key, previousListing);
+          if (key === stateKey) setListing(previousListing);
+          void writeMetadataCache(
+            userId,
+            key.slice(userId.length + 1),
+            withoutSignedUrls(previousListing),
+          ).catch((cacheError: unknown) => {
+            console.warn("Could not restore the folder listing cache.", cacheError);
+          });
+        }
+      };
+    },
+    [section, stateKey, userId],
+  );
+
   const refresh = useCallback(() => load(true), [load]);
   const isCurrentListing = stateKey !== "" && storedKey === stateKey;
+  const currentMemoryListing = stateKey
+    ? memoryListingCache.get(stateKey)
+    : undefined;
 
   return {
-    listing: isCurrentListing ? listing : EMPTY_LISTING,
-    isLoading: isCurrentListing ? isLoading : Boolean(section),
+    listing: isCurrentListing
+      ? listing
+      : (currentMemoryListing ?? EMPTY_LISTING),
+    isLoading: isCurrentListing
+      ? isLoading
+      : Boolean(section && !currentMemoryListing),
     isRefreshing: isCurrentListing && isRefreshing,
     isLoadingMore: isCurrentListing && isLoadingMore,
     error: isCurrentListing ? error : null,
     refresh,
     loadMore,
+    moveFilesOptimistically,
+    updateFolderOptimistically,
+    updateFilesOptimistically,
   };
 }

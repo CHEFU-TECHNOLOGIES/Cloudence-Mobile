@@ -133,3 +133,26 @@ export async function deleteFolder(accessToken: string, folderId: string) {
     throw new Error("The server did not confirm the folder deletion.");
   }
 }
+
+export async function moveFilesToFolder(
+  accessToken: string,
+  fileIds: string[],
+  folderId: string | null,
+) {
+  const result = await apiRequest<unknown>(
+    "/cloudence/files/folders/move",
+    accessToken,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileIds, folderId }),
+    },
+  );
+  if (
+    !isRecord(result) ||
+    result.status !== "success" ||
+    result.moved !== fileIds.length
+  ) {
+    throw new Error("The server did not confirm moving the selected files.");
+  }
+}

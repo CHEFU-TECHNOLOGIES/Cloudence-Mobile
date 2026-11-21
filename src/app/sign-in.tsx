@@ -1,7 +1,7 @@
 import React from "react";
 import {
-  ActivityIndicator,
   Pressable,
+  ActivityIndicator,
   StatusBar,
   StyleSheet,
   Text,

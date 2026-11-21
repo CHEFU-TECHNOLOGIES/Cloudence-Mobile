@@ -1,10 +1,10 @@
 import { X } from "lucide-react-native";
 import { useState } from "react";
 import {
+  Pressable,
   KeyboardAvoidingView,
   Modal,
   Platform,
-  Pressable,
   Text,
   TouchableWithoutFeedback,
   useWindowDimensions,
@@ -17,7 +17,7 @@ import { styles } from "./FileActionModal.styles";
 import FileThumbnail from "./FileThumbnail";
 import { useToast } from "./ToastProvider";
 import FileSharePanel from "./FileSharePanel";
-import ConfirmDialog from "./ConfirmDialog";
+import DeleteConfirmationPanel from "./DeleteConfirmationPanel";
 import FileActionMenu from "./FileActionMenu";
 import FileRenamePanel from "./FileRenamePanel";
 import FileDetailsPanel from "./FileDetailsPanel";
@@ -32,7 +32,7 @@ type Props = {
   onShare?: (
     fileId: string,
     emails: string[],
-    shareExpiresAt?: string | null,
+    userExpiration?: { email: string; expiresAt: string | null },
   ) => void | Promise<void>;
   onDownload?: (
     file: CloudFile,
@@ -136,13 +136,8 @@ function FileActionSheetContent({
         <FileSharePanel file={file} onClose={onClose} onShare={onShare} />
       )}
       {activeAction === "delete" && (
-        <ConfirmDialog
-          embedded
-          visible
-          title="Delete this file?"
-          message={`“${file.name}” will be permanently deleted. This action cannot be undone.`}
-          confirmLabel="Delete permanently"
-          destructive
+        <DeleteConfirmationPanel
+          fileName={file.name}
           onCancel={() => setActiveAction(null)}
           onConfirm={handleDeleteConfirm}
         />

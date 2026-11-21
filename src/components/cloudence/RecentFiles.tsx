@@ -1,5 +1,10 @@
 import React from "react";
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import {
+  Pressable,
+  View,
+  Text,
+  StyleSheet,
+} from "react-native";
 import { ArrowRight } from "lucide-react-native";
 import { CloudFile } from "../../types/file";
 import { theme } from "../../constants/theme";
@@ -11,6 +16,10 @@ type Props = {
     onSeeAll?: () => void;
     onFilePress?: (file: CloudFile) => void;
     onFileMore?: (file: CloudFile) => void;
+    selectionMode?: boolean;
+    selectedIds?: string[];
+    onLongPress?: (file: CloudFile) => void;
+    onToggleSelection?: (file: CloudFile) => void;
 };
 
 export default function RecentFiles({
@@ -18,6 +27,10 @@ export default function RecentFiles({
     onSeeAll,
     onFilePress,
     onFileMore,
+    selectionMode = false,
+    selectedIds = [],
+    onLongPress,
+    onToggleSelection,
 }: Props) {
     return (
         <View style={styles.container}>
@@ -49,6 +62,10 @@ export default function RecentFiles({
                             file={file}
                             onPress={onFilePress}
                             onMore={onFileMore}
+                            onLongPress={onLongPress}
+                            onToggleSelection={onToggleSelection}
+                            selectionMode={selectionMode}
+                            selected={selectedIds.includes(file.id)}
                             isLast={idx === files.length - 1}
                         />
                     ))

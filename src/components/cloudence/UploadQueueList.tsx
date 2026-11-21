@@ -1,4 +1,9 @@
-import { Pressable, Text, TextInput, View } from "react-native";
+import {
+  Pressable,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import { X } from "lucide-react-native";
 import { theme } from "../../constants/theme";
@@ -8,7 +13,7 @@ export type UploadQueueItem = {
   id: string;
   asset: DocumentPicker.DocumentPickerAsset;
   uploadName: string;
-  status: "queued" | "uploading" | "done" | "failed";
+  status: "queued" | "uploading" | "failed" | "invalid";
 };
 
 type Props = {
@@ -66,7 +71,7 @@ export default function UploadQueueList({
             <Pressable disabled={disabled} onPress={() => onRetry(item.id)}>
               <Text style={{ color: theme.colors.brand, fontSize: 11, fontWeight: "700" }}>Retry</Text>
             </Pressable>
-          ) : item.status === "queued" ? (
+          ) : item.status === "queued" || item.status === "invalid" ? (
             <Pressable disabled={disabled} hitSlop={8} onPress={() => onRemove(item.id)} accessibilityLabel={`Remove ${item.asset.name} from upload queue`}>
               <X size={16} color={theme.colors.secondaryText} />
             </Pressable>
@@ -81,10 +86,10 @@ function statusLabel(status: UploadQueueItem["status"]) {
   switch (status) {
     case "uploading":
       return "Uploading";
-    case "done":
-      return "Uploaded";
     case "failed":
       return "Failed";
+    case "invalid":
+      return "Over 50 MB · remove this file";
     default:
       return "Waiting";
   }

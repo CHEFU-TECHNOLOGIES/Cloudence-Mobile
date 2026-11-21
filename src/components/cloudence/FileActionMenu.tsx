@@ -1,5 +1,9 @@
 import { Download, Edit3, Info, Share2, Trash2 } from "lucide-react-native";
-import { Pressable, Text, View } from "react-native";
+import {
+  Pressable,
+  Text,
+  View,
+} from "react-native";
 import { theme } from "../../constants/theme";
 import { ActionModalType } from "../../types/file";
 import { styles } from "./FileActionModal.styles";

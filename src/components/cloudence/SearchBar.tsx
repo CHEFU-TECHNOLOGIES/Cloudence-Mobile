@@ -1,5 +1,10 @@
 import React, { useState } from "react";
-import { View, TextInput, Pressable, StyleSheet } from "react-native";
+import {
+  Pressable,
+  View,
+  TextInput,
+  StyleSheet,
+} from "react-native";
 import { Search, X } from "lucide-react-native";
 import { theme } from "../../constants/theme";
 

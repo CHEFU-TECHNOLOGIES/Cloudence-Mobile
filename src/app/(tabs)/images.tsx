@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from "react";
 import {
+  Pressable,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   View,
-  Pressable,
   RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -20,6 +20,7 @@ import ViewToggle from "../../components/cloudence/ViewToggle";
 import SortModal from "../../components/cloudence/SortModal";
 import FileActionModal from "../../components/cloudence/FileActionModal";
 import FileUploadModal from "../../components/cloudence/FileUploadModal";
+import BulkFileSelectionActions from "../../components/cloudence/BulkFileSelectionActions";
 import WorkspaceStatus from "../../components/cloudence/WorkspaceStatus";
 import FileCollectionSkeleton from "../../components/cloudence/skeletons/FileCollectionSkeleton";
 import { useToast } from "../../components/cloudence/ToastProvider";
@@ -29,11 +30,10 @@ import { theme } from "../../constants/theme";
 import { CloudFile, SortType } from "../../types/file";
 import { convertFileSize, sortFiles } from "../../utils/fileUtils";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { useFileSelection } from "../../hooks/useFileSelection";
+import { useBulkFileActions } from "../../hooks/useBulkFileActions";
 import * as DocumentPicker from "expo-document-picker";
-import {
-  setDefaultFileView,
-  useWorkspacePreferences,
-} from "../../hooks/useWorkspacePreferences";
+import { setDefaultFileView, useWorkspacePreferences } from "../../hooks/useWorkspacePreferences";
 
 export default function ImagesScreen() {
   const layout = useResponsiveLayout();
@@ -81,6 +81,17 @@ export default function ImagesScreen() {
     return imageFiles.reduce((acc, f) => acc + f.size, 0);
   }, [imageFiles]);
   const isInitialLoading = isLoading && files.length === 0 && !error;
+  const selection = useFileSelection(imageFiles);
+  const bulkActions = useBulkFileActions({
+    removeFile: remove,
+    refreshListing: refresh,
+    optimisticallyMove: () => () => {},
+  });
+
+  const handleBulkDelete = (filesToDelete: CloudFile[]) => {
+    selection.clear();
+    void bulkActions.deleteFiles(filesToDelete);
+  };
 
   const handleOpenFile = (file: CloudFile) => {
     setSelectedFileForAction(file);
@@ -111,7 +122,14 @@ export default function ImagesScreen() {
     asset: DocumentPicker.DocumentPickerAsset,
     name?: string,
   ) => {
-    await upload(asset, name);
+    const uploaded = await upload(asset, name);
+    if (uploaded?.duplicate) {
+      showToast({
+        title: "Duplicate skipped",
+        message: "An identical file already exists in your workspace.",
+        variant: "info",
+      });
+    }
   };
 
   return (
@@ -127,6 +145,7 @@ export default function ImagesScreen() {
             maxWidth: layout.contentMaxWidth,
             alignSelf: "center",
             paddingHorizontal: layout.horizontalPadding,
+            paddingBottom: selection.selectionMode ? 112 : 36,
           },
         ]}
         showsVerticalScrollIndicator={false}
@@ -186,7 +205,8 @@ export default function ImagesScreen() {
             cardWidth={itemWidth}
           />
         ) : imageFiles.length > 0 ? (
-          defaultFileView === "grid" ? (
+          <>
+          {defaultFileView === "grid" ? (
             <View style={styles.gridContainer}>
               {imageFiles.map((file) => (
                 <FileCard
@@ -195,6 +215,10 @@ export default function ImagesScreen() {
                   width={itemWidth}
                   onPress={handleOpenFile}
                   onMore={handleOpenFile}
+                  onLongPress={selection.selectOnLongPress}
+                  onToggleSelection={selection.toggle}
+                  selectionMode={selection.selectionMode}
+                  selected={selection.selectedIds.includes(file.id)}
                 />
               ))}
             </View>
@@ -206,11 +230,16 @@ export default function ImagesScreen() {
                   file={file}
                   onPress={handleOpenFile}
                   onMore={handleOpenFile}
+                  onLongPress={selection.selectOnLongPress}
+                  onToggleSelection={selection.toggle}
+                  selectionMode={selection.selectionMode}
+                  selected={selection.selectedIds.includes(file.id)}
                   isLast={idx === imageFiles.length - 1}
                 />
               ))}
             </View>
-          )
+          )}
+          </>
         ) : !isLoading && !error ? (
           <EmptyState
             title="No images found"
@@ -218,6 +247,18 @@ export default function ImagesScreen() {
           />
         ) : null}
       </ScrollView>
+
+      {selection.selectionMode && (
+        <BulkFileSelectionActions
+          files={selection.selectedFiles}
+          canMove={false}
+          folders={[]}
+          currentFolderId={null}
+          onMove={() => {}}
+          onDelete={handleBulkDelete}
+          onCancel={selection.clear}
+        />
+      )}
 
       {/* Modals */}
       <SortModal

@@ -1,15 +1,25 @@
-import React from "react";
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import React, { useRef } from "react";
+import {
+  Pressable,
+  View,
+  Text,
+  StyleSheet,
+} from "react-native";
 import { MoreHorizontal } from "lucide-react-native";
 import { CloudFile } from "../../types/file";
 import { theme } from "../../constants/theme";
 import { convertFileSize, formatDateTime } from "../../utils/fileUtils";
 import FileThumbnail from "./FileThumbnail";
+import FileSelectionCheckbox from "./FileSelectionCheckbox";
 
 type Props = {
     file: CloudFile;
     onPress?: (file: CloudFile) => void;
     onMore?: (file: CloudFile) => void;
+    onLongPress?: (file: CloudFile) => void;
+    onToggleSelection?: (file: CloudFile) => void;
+    selectionMode?: boolean;
+    selected?: boolean;
     isLast?: boolean;
 };
 
@@ -17,19 +27,37 @@ export default function FileRow({
     file,
     onPress,
     onMore,
+    onLongPress,
+    onToggleSelection,
+    selectionMode = false,
+    selected = false,
     isLast = false,
 }: Props) {
+    const longPressHandled = useRef(false);
     const ownerInitial = file.owner.fullName
         ? file.owner.fullName.charAt(0).toUpperCase()
         : "U";
 
     return (
         <Pressable
-            onPress={() => onPress?.(file)}
+            onPress={() => {
+                if (longPressHandled.current) {
+                    longPressHandled.current = false;
+                    return;
+                }
+                if (selectionMode) onToggleSelection?.(file);
+                else onPress?.(file);
+            }}
+            onLongPress={() => {
+                longPressHandled.current = true;
+                onLongPress?.(file);
+            }}
+            delayLongPress={450}
             style={({ pressed }) => [
                 styles.container,
                 isLast && styles.noBorder,
                 pressed && { backgroundColor: theme.colors.surfaceSubtle },
+                selected && styles.selectedContainer,
             ]}
         >
             <FileThumbnail file={file} style={styles.thumbnail} />
@@ -62,7 +90,13 @@ export default function FileRow({
             </View>
 
             {/* More actions */}
-            <Pressable
+            {selectionMode ? (
+                <FileSelectionCheckbox
+                    selected={selected}
+                    fileName={file.name}
+                    onPress={() => onToggleSelection?.(file)}
+                />
+            ) : <Pressable
                 hitSlop={10}
                 onPress={(e) => {
                     e.stopPropagation();
@@ -72,7 +106,7 @@ export default function FileRow({
                 style={styles.moreButton}
             >
                 <MoreHorizontal size={20} color={theme.colors.secondaryText} />
-            </Pressable>
+            </Pressable>}
         </Pressable>
     );
 }
@@ -88,6 +122,12 @@ const styles = StyleSheet.create({
     },
     noBorder: {
         borderBottomWidth: 0,
+    },
+    selectedContainer: {
+        backgroundColor: theme.colors.brandLight,
+        marginHorizontal: -16,
+        paddingHorizontal: 16,
+        borderRadius: theme.radius.md,
     },
     thumbnail: {
         width: 44,

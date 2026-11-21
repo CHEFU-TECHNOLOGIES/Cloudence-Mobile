@@ -129,14 +129,18 @@ export function useCloudenceFileActions({
   );
 
   const remove = useCallback(
-    async (fileId: string) => {
+    async (
+      fileId: string,
+      refreshAfter = true,
+      fallbackFile?: CloudFile,
+    ) => {
       if (!userId) throw new Error("Sign in to delete Cloudence files.");
       const currentFiles = getFiles();
       const currentRecent = getRecentFiles();
       const originalIndex = currentFiles.findIndex(
         (file) => file.id === fileId,
       );
-      const previousFile = currentFiles[originalIndex];
+      const previousFile = currentFiles[originalIndex] ?? fallbackFile;
       const recentIndex = currentRecent.findIndex(
         (file) => file.id === fileId,
       );
@@ -157,10 +161,13 @@ export function useCloudenceFileActions({
           );
         }
         invalidateUsage();
-        void refreshData(false);
+        if (refreshAfter) void refreshData(false);
       } catch (mutationError) {
         const currentAfterFailure = getFiles();
-        if (!currentAfterFailure.some((file) => file.id === fileId)) {
+        if (
+          originalIndex >= 0 &&
+          !currentAfterFailure.some((file) => file.id === fileId)
+        ) {
           setFiles(insertAt(currentAfterFailure, previousFile, originalIndex));
         }
         const recentAfterFailure = getRecentFiles();
@@ -193,35 +200,89 @@ export function useCloudenceFileActions({
     async (
       fileId: string,
       users: string[],
-      shareExpiresAt?: string | null,
+      userExpiration?: { email: string; expiresAt: string | null },
     ) => {
       if (!userId) throw new Error("Sign in to share Cloudence files.");
-      const accessToken = await getAccessToken();
-      const updated = await updateFileSharing(
-        accessToken,
-        fileId,
-        users,
-        shareExpiresAt,
-      );
-      setFiles(
-        getFiles().map((file) =>
-          file.id === fileId
-            ? { ...updated, folderId: file.folderId }
-            : file,
-        ),
-      );
-      setRecentFiles(
-        getRecentFiles().map((file) =>
-          file.id === fileId
-            ? { ...updated, folderId: file.folderId }
-            : file,
-        ),
-      );
-      const cacheError = await persistFiles(userId, getFiles());
-      if (cacheError) {
-        setError(
-          `Your change was saved, but cache could not update: ${cacheError}`,
+      const currentFiles = getFiles();
+      const currentRecent = getRecentFiles();
+      const previousFile = currentFiles.find((file) => file.id === fileId);
+      const previousRecent = currentRecent.find((file) => file.id === fileId);
+      const normalizedUsers = users.map((email) => email.trim().toLowerCase());
+      const optimisticFile = previousFile
+        ? {
+            ...previousFile,
+            users,
+            shareExpiresAtByUser: Object.fromEntries(
+              Object.entries(previousFile.shareExpiresAtByUser ?? {}).filter(
+                ([email]) => normalizedUsers.includes(email.toLowerCase()),
+              ),
+            ),
+          }
+        : undefined;
+      if (optimisticFile && userExpiration) {
+        const expirationKey = userExpiration.email.trim().toLowerCase();
+        optimisticFile.shareExpiresAtByUser = {
+          ...optimisticFile.shareExpiresAtByUser,
+          [expirationKey]: userExpiration.expiresAt,
+        };
+      }
+      if (optimisticFile) {
+        setFiles(
+          currentFiles.map((file) =>
+            file.id === fileId ? optimisticFile : file,
+          ),
         );
+        setRecentFiles(
+          currentRecent.map((file) =>
+            file.id === fileId ? optimisticFile : file,
+          ),
+        );
+      }
+
+      try {
+        const accessToken = await getAccessToken();
+        const updated = await updateFileSharing(
+          accessToken,
+          fileId,
+          users,
+          userExpiration,
+        );
+        setFiles(
+          getFiles().map((file) =>
+            file.id === fileId
+              ? { ...updated, folderId: file.folderId }
+              : file,
+          ),
+        );
+        setRecentFiles(
+          getRecentFiles().map((file) =>
+            file.id === fileId
+              ? { ...updated, folderId: file.folderId }
+              : file,
+          ),
+        );
+        const cacheError = await persistFiles(userId, getFiles());
+        if (cacheError) {
+          setError(
+            `Your change was saved, but cache could not update: ${cacheError}`,
+          );
+        }
+      } catch (mutationError) {
+        if (previousFile) {
+          setFiles(
+            getFiles().map((file) =>
+              file.id === fileId ? previousFile : file,
+            ),
+          );
+        }
+        if (previousRecent) {
+          setRecentFiles(
+            getRecentFiles().map((file) =>
+              file.id === fileId ? previousRecent : file,
+            ),
+          );
+        }
+        throw mutationError;
       }
     },
     [
@@ -270,6 +331,10 @@ export function useCloudenceFileActions({
           controller.signal,
           folderId,
         );
+        if (uploaded.duplicate) {
+          void refreshData(false);
+          return uploaded;
+        }
         const nextFiles = [
           uploaded,
           ...getFiles().filter((file) => file.id !== uploaded.id),
@@ -288,6 +353,7 @@ export function useCloudenceFileActions({
         }
         invalidateUsage();
         void refreshData(false);
+        return uploaded;
       } finally {
         if (uploadControllerRef.current === controller) {
           uploadControllerRef.current = null;

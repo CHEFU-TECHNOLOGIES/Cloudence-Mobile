@@ -1,5 +1,9 @@
 import { ChevronRight, LogOut } from "lucide-react-native";
-import { Pressable, Text, View } from "react-native";
+import {
+  Pressable,
+  Text,
+  View,
+} from "react-native";
 import { profileStyles as styles } from "../ProfileScreen.styles";
 import { theme } from "../../../constants/theme";
 import LegalLinksSection from "./LegalLinksSection";

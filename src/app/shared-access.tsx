@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
 import { router } from "expo-router";
 import {
-    Pressable,
-    RefreshControl,
-    ScrollView,
-    StatusBar,
-    Text,
-    View,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  Text,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ChevronLeft } from "lucide-react-native";

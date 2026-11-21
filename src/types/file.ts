@@ -8,6 +8,7 @@ export type FileType = "document" | "image" | "video" | "audio" | "other";
 
 export type CloudFile = {
   id: string;
+  duplicate?: boolean;
   name: string;
   extension: string;
   type: FileType;
@@ -24,6 +25,7 @@ export type CloudFile = {
   };
   users: string[];
   shareExpiresAt?: string;
+  shareExpiresAtByUser?: Record<string, string | null>;
   url?: string;
   folderId?: string;
   dimensions?: string;

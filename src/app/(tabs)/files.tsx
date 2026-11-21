@@ -1,49 +1,34 @@
-import React, { useEffect, useMemo, useState } from "react";
-import {
-  ScrollView,
-  RefreshControl,
-  StatusBar,
-  Text,
-  View,
-  Pressable,
-} from "react-native";
+import React, { useMemo, useState } from "react";
+import { Pressable, ScrollView, RefreshControl, StatusBar, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { ArrowDownUp, Plus } from "lucide-react-native";
 
 import AppHeader from "../../components/cloudence/AppHeader";
 import SearchBar from "../../components/cloudence/SearchBar";
-import FileCard from "../../components/cloudence/FileCard";
-import FileRow from "../../components/cloudence/FileRow";
-import EmptyState from "../../components/cloudence/EmptyState";
-import ViewToggle from "../../components/cloudence/ViewToggle";
+import FileCategoryFilters from "../../components/cloudence/FileCategoryFilters";
+import FileListControls from "../../components/cloudence/FileListControls";
+import FileResults from "../../components/cloudence/FileResults";
 import SortModal from "../../components/cloudence/SortModal";
 import FileActionModal from "../../components/cloudence/FileActionModal";
+import BulkFileSelectionActions from "../../components/cloudence/BulkFileSelectionActions";
 import FileUploadModal from "../../components/cloudence/FileUploadModal";
-import FolderCard from "../../components/cloudence/FolderCard";
+import FolderSectionView from "../../components/cloudence/FolderSectionView";
+import FolderActionModal from "../../components/cloudence/FolderActionModal";
 import FolderNameModal from "../../components/cloudence/FolderNameModal";
 import WorkspaceStatus from "../../components/cloudence/WorkspaceStatus";
-import FileCollectionSkeleton from "../../components/cloudence/skeletons/FileCollectionSkeleton";
-import SkeletonBlock from "../../components/cloudence/skeletons/SkeletonBlock";
-import FolderGridSkeleton from "../../components/cloudence/skeletons/FolderGridSkeleton";
 import { useToast } from "../../components/cloudence/ToastProvider";
 
 import { useCloudenceData } from "../../data/CloudenceDataProvider";
-import { useSession } from "../../auth/SessionContext";
 import { theme } from "../../constants/theme";
 import { CloudFile, SortType } from "../../types/file";
-import { convertFileSize, sortFiles } from "../../utils/fileUtils";
+import { sortFiles } from "../../utils/fileUtils";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useSectionListing } from "../../hooks/useSectionListing";
-import {
-  setDefaultFileView,
-  useWorkspacePreferences,
-} from "../../hooks/useWorkspacePreferences";
-import {
-  CloudenceFolder,
-  createFolder as createFolderRequest,
-  FolderSection,
-} from "../../lib/api/folders";
+import { setDefaultFileView, useWorkspacePreferences } from "../../hooks/useWorkspacePreferences";
+import { CloudenceFolder, FolderSection } from "../../lib/api/folders";
+import { useFolderActions } from "../../hooks/useFolderActions";
+import { useBulkFileActions } from "../../hooks/useBulkFileActions";
+import { useFolderCreation } from "../../hooks/useFolderCreation";
 import * as DocumentPicker from "expo-document-picker";
 import { filesScreenStyles as styles } from "../../components/cloudence/FilesScreen.styles";
 
@@ -69,7 +54,6 @@ export default function FilesScreen() {
     cancelUpload,
     cancelDownload,
   } = useCloudenceData();
-  const { getAccessToken } = useSession();
   const params = useLocalSearchParams<{ category?: string }>();
   const [categoryOverride, setCategoryOverride] = useState<string | null>(null);
 
@@ -78,8 +62,14 @@ export default function FilesScreen() {
     (params.category && filterCategories.includes(params.category)
       ? params.category
       : "All");
-  const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
-  const [isCreateFolderVisible, setIsCreateFolderVisible] = useState(false);
+  const [folderNavigation, setFolderNavigation] = useState<{
+    category: string;
+    folderId: string | null;
+  }>({ category: selectedCategory, folderId: null });
+  const activeFolderId =
+    folderNavigation.category === selectedCategory
+      ? folderNavigation.folderId
+      : null;
   const sectionByCategory: Record<string, FolderSection> = {
     Documents: "documents",
     Images: "images",
@@ -88,6 +78,27 @@ export default function FilesScreen() {
   };
   const activeSection = sectionByCategory[selectedCategory] ?? null;
   const sectionListing = useSectionListing(activeSection, activeFolderId);
+  const folderCreation = useFolderCreation(activeSection, () => sectionListing.refresh());
+  const folderActions = useFolderActions(
+    () => sectionListing.refresh(),
+    sectionListing.updateFolderOptimistically,
+  );
+  const pendingFolder = folderCreation.pendingFolder?.section === activeSection
+    ? folderCreation.pendingFolder
+    : null;
+  const folderAlreadyCreated = Boolean(
+    pendingFolder &&
+      sectionListing.listing.folders.some(
+        (folder) =>
+          folder.name.toLowerCase() === pendingFolder.name.toLowerCase(),
+      ),
+  );
+  const visibleFolders = pendingFolder && !folderAlreadyCreated
+    ? [
+        ...sectionListing.listing.folders,
+        pendingFolder,
+      ]
+    : sectionListing.listing.folders;
 
   const [query, setQuery] = useState("");
   const [currentSort, setCurrentSort] = useState<SortType>("$createdAt-desc");
@@ -96,6 +107,7 @@ export default function FilesScreen() {
   const [selectedFileForAction, setSelectedFileForAction] =
     useState<CloudFile | null>(null);
   const [isActionModalVisible, setIsActionModalVisible] = useState(false);
+  const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
 
   const itemWidth = layout.cardWidth;
   const handleViewChange = setDefaultFileView;
@@ -106,6 +118,10 @@ export default function FilesScreen() {
           : file.folderId === undefined,
       )
     : files;
+  const selectedFiles = sourceFiles.filter((file) =>
+    selectedFileIds.includes(file.id),
+  );
+  const selectionMode = selectedFileIds.length > 0;
   const screenLoading = activeSection ? sectionListing.isLoading : isLoading;
   const screenError = activeSection ? sectionListing.error : error;
   const handleRefresh = async () => {
@@ -135,9 +151,13 @@ export default function FilesScreen() {
     return succeeded;
   };
 
-  useEffect(() => {
-    setActiveFolderId(null);
-  }, [selectedCategory]);
+  const refreshBulkListing = () =>
+    activeSection ? sectionListing.refresh() : refresh();
+  const bulkActions = useBulkFileActions({
+    removeFile: remove,
+    refreshListing: refreshBulkListing,
+    optimisticallyMove: sectionListing.moveFilesOptimistically,
+  });
 
   const filteredAndSortedFiles = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -165,6 +185,40 @@ export default function FilesScreen() {
     setIsActionModalVisible(true);
   };
 
+  const toggleFileSelection = (file: CloudFile) => {
+    setSelectedFileIds((current) =>
+      current.includes(file.id)
+        ? current.filter((id) => id !== file.id)
+        : [...current, file.id],
+    );
+  };
+
+  const handleLongPressFile = (file: CloudFile) => {
+    setSelectedFileIds((current) =>
+      current.includes(file.id) ? current : [...current, file.id],
+    );
+  };
+
+  const handlePressFile = (file: CloudFile) => {
+    if (selectionMode) toggleFileSelection(file);
+    else handleOpenFile(file);
+  };
+
+  const handleCategorySelect = (category: string) => {
+    setSelectedFileIds([]);
+    setCategoryOverride(category);
+  };
+
+  const handleBulkDelete = (filesToDelete: CloudFile[]) => {
+    setSelectedFileIds([]);
+    void bulkActions.deleteFiles(filesToDelete);
+  };
+
+  const handleBulkMove = (filesToMove: CloudFile[], folderId: string | null) => {
+    setSelectedFileIds([]);
+    void bulkActions.moveFiles(filesToMove, folderId);
+  };
+
   const handleOpenMore = (file: CloudFile) => {
     setSelectedFileForAction(file);
     setIsActionModalVisible(true);
@@ -185,17 +239,47 @@ export default function FilesScreen() {
     await refreshSectionAfterAction();
   };
 
-  const handleShare = async (fileId: string, users: string[]) => {
-    await share(fileId, users);
-    await refreshSectionAfterAction();
+  const handleShare = async (
+    fileId: string,
+    users: string[],
+    userExpiration?: { email: string; expiresAt: string | null },
+  ) => {
+    const normalizedUsers = users.map((email) => email.trim().toLowerCase());
+    const rollback = sectionListing.updateFilesOptimistically(fileId, (file) => {
+      const shareExpiresAtByUser = Object.fromEntries(
+        Object.entries(file.shareExpiresAtByUser ?? {}).filter(([email]) =>
+          normalizedUsers.includes(email.toLowerCase()),
+        ),
+      );
+      if (userExpiration) {
+        shareExpiresAtByUser[userExpiration.email.trim().toLowerCase()] =
+          userExpiration.expiresAt;
+      }
+      return { ...file, users, shareExpiresAtByUser };
+    });
+    try {
+      await share(fileId, users, userExpiration);
+      await refreshSectionAfterAction();
+    } catch (error) {
+      rollback();
+      throw error;
+    }
   };
 
   const handleFileUploaded = async (
     asset: DocumentPicker.DocumentPickerAsset,
     name?: string,
   ) => {
-    await upload(asset, name, activeFolderId);
+    const uploaded = await upload(asset, name, activeFolderId);
     if (!(await refreshSectionAfterAction())) return;
+    if (uploaded?.duplicate) {
+      showToast({
+        title: "Duplicate skipped",
+        message: "An identical file already exists in your workspace.",
+        variant: "info",
+      });
+      return;
+    }
     showToast({
       title: "Upload successful",
       message: `“${name || asset.name}” was uploaded.`,
@@ -203,21 +287,9 @@ export default function FilesScreen() {
     });
   };
 
-  const handleCreateFolder = async (name: string) => {
-    if (!activeSection) return;
-    const accessToken = await getAccessToken();
-    await createFolderRequest(accessToken, activeSection, name);
-    if (!(await refreshSectionAfterAction())) return;
-    showToast({
-      title: "Folder created",
-      message: `“${name}” is ready to use.`,
-      variant: "success",
-    });
-  };
-
   const handleOpenFolder = (folder: CloudenceFolder) => {
     setQuery("");
-    setActiveFolderId(folder.id);
+    setFolderNavigation({ category: selectedCategory, folderId: folder.id });
   };
 
   return (
@@ -233,6 +305,7 @@ export default function FilesScreen() {
             maxWidth: layout.contentMaxWidth,
             alignSelf: "center",
             paddingHorizontal: layout.horizontalPadding,
+            paddingBottom: selectionMode ? 112 : 36,
           },
         ]}
         showsVerticalScrollIndicator={false}
@@ -275,84 +348,32 @@ export default function FilesScreen() {
           <SearchBar value={query} onChangeText={setQuery} />
         </View>
 
-        {/* Filter Pills */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.pillList}
-        >
-          {filterCategories.map((category) => {
-            const isActive = selectedCategory === category;
-            const count =
-              category === "All"
-                ? files.length
-                : files.filter((f) => f.category === category).length;
-
-            return (
-              <Pressable
-                key={category}
-                onPress={() => setCategoryOverride(category)}
-                style={[styles.filterPill, isActive && styles.activeFilterPill]}
-              >
-                <Text
-                  style={[
-                    styles.filterPillText,
-                    isActive && styles.activeFilterPillText,
-                  ]}
-                >
-                  {category}
-                </Text>
-                <View
-                  style={[styles.pillBadge, isActive && styles.activePillBadge]}
-                >
-                  <Text
-                    style={[
-                      styles.pillBadgeText,
-                      isActive && styles.activePillBadgeText,
-                    ]}
-                  >
-                    {count}
-                  </Text>
-                </View>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+        <FileCategoryFilters
+          files={files}
+          selectedCategory={selectedCategory}
+          onSelect={handleCategorySelect}
+        />
 
         {activeSection && !activeFolderId && (
-          <View style={styles.folderSection}>
-            <View style={styles.folderHeading}>
-              <Text style={styles.folderHeadingText}>Folders</Text>
-              <Pressable
-                onPress={() => setIsCreateFolderVisible(true)}
-                style={styles.createFolderButton}
-                accessibilityRole="button"
-                accessibilityLabel="Create folder"
-              >
-                <Plus size={14} color={theme.colors.brandDark} />
-                <Text style={styles.createFolderText}>New folder</Text>
-              </Pressable>
-            </View>
-            <View style={styles.folderGrid}>
-              {sectionListing.isLoading ? (
-                <FolderGridSkeleton cardWidth={itemWidth} />
-              ) : (
-                sectionListing.listing.folders.map((folder) => (
-                  <FolderCard
-                    key={folder.id}
-                    folder={folder}
-                    width={itemWidth}
-                    onPress={handleOpenFolder}
-                  />
-                ))
-              )}
-            </View>
-          </View>
+          <FolderSectionView
+            cardWidth={itemWidth}
+            folders={visibleFolders}
+            loading={sectionListing.isLoading && !pendingFolder}
+            pendingFolderId={
+              folderAlreadyCreated ? undefined : pendingFolder?.id
+            }
+            onCreate={folderCreation.open}
+            onOpen={handleOpenFolder}
+            onLongPress={folderActions.open}
+          />
         )}
 
         {activeFolderId && (
           <Pressable
-            onPress={() => setActiveFolderId(null)}
+            onPress={() => {
+              setSelectedFileIds([]);
+              setFolderNavigation({ category: selectedCategory, folderId: null });
+            }}
             style={styles.folderBreadcrumb}
             accessibilityRole="button"
           >
@@ -362,88 +383,43 @@ export default function FilesScreen() {
           </Pressable>
         )}
 
-        {/* Bar: Total size + Sort + ViewToggle */}
-        <View style={styles.controlBar}>
-          <View>
-            <Text style={styles.totalLabel}>
-              Total:{" "}
-              <Text style={styles.totalValue}>
-                {convertFileSize(totalBytes)}
-              </Text>
-            </Text>
-            <Text style={styles.countLabel}>
-              {filteredAndSortedFiles.length}{" "}
-              {filteredAndSortedFiles.length === 1 ? "file" : "files"}
-            </Text>
-          </View>
+        <FileListControls
+          totalBytes={totalBytes}
+          fileCount={filteredAndSortedFiles.length}
+          view={defaultFileView}
+          onSort={() => setIsSortModalVisible(true)}
+          onViewChange={handleViewChange}
+        />
 
-          <View style={styles.rightControls}>
-            <Pressable
-              onPress={() => setIsSortModalVisible(true)}
-              style={styles.sortButton}
-            >
-              <ArrowDownUp size={14} color={theme.colors.brand} />
-              <Text numberOfLines={1} style={styles.sortButtonText}>
-                Sort
-              </Text>
-            </Pressable>
-
-            <ViewToggle view={defaultFileView} onChange={handleViewChange} />
-          </View>
-        </View>
-
-        {/* Files View: Grid or List */}
-        {screenLoading ? (
-          <FileCollectionSkeleton
-            view={defaultFileView}
-            cardWidth={itemWidth}
-          />
-        ) : filteredAndSortedFiles.length > 0 ? (
-          defaultFileView === "grid" ? (
-            <View style={styles.gridContainer}>
-              {filteredAndSortedFiles.map((file) => (
-                <FileCard
-                  key={file.id}
-                  file={file}
-                  width={itemWidth}
-                  onPress={handleOpenFile}
-                  onMore={handleOpenMore}
-                />
-              ))}
-            </View>
-          ) : (
-            <View style={styles.listContainer}>
-              {filteredAndSortedFiles.map((file, idx) => (
-                <FileRow
-                  key={file.id}
-                  file={file}
-                  onPress={handleOpenFile}
-                  onMore={handleOpenMore}
-                  isLast={idx === filteredAndSortedFiles.length - 1}
-                />
-              ))}
-            </View>
-          )
-        ) : !screenLoading && !screenError ? (
-          <EmptyState
-            title="No files match your filter"
-            message="Try another category filter or search query."
-          />
-        ) : null}
-        {activeFolderId && sectionListing.listing.nextOffset !== undefined && (
-          <Pressable
-            onPress={() => void sectionListing.loadMore()}
-            disabled={sectionListing.isLoadingMore}
-            style={styles.loadMoreButton}
-          >
-            {sectionListing.isLoadingMore ? (
-              <SkeletonBlock width={86} height={12} borderRadius={6} />
-            ) : (
-              <Text style={styles.loadMoreText}>Load more files</Text>
-            )}
-          </Pressable>
-        )}
+        <FileResults
+          files={filteredAndSortedFiles}
+          loading={screenLoading}
+          error={screenError}
+          view={defaultFileView}
+          cardWidth={itemWidth}
+          selectionMode={selectionMode}
+          selectedIds={selectedFileIds}
+          hasMore={Boolean(activeFolderId && sectionListing.listing.nextOffset !== undefined)}
+          loadingMore={sectionListing.isLoadingMore}
+          onPressFile={handlePressFile}
+          onMore={handleOpenMore}
+          onLongPress={handleLongPressFile}
+          onToggleSelection={toggleFileSelection}
+          onLoadMore={() => void sectionListing.loadMore()}
+        />
       </ScrollView>
+
+      {selectionMode && (
+        <BulkFileSelectionActions
+          files={selectedFiles}
+          canMove={Boolean(activeSection)}
+          folders={activeSection ? sectionListing.listing.folders : []}
+          currentFolderId={activeFolderId}
+          onMove={handleBulkMove}
+          onDelete={handleBulkDelete}
+          onCancel={() => setSelectedFileIds([])}
+        />
+      )}
 
       {/* Modals */}
       <SortModal
@@ -472,9 +448,16 @@ export default function FilesScreen() {
         onCancelUpload={cancelUpload}
       />
       <FolderNameModal
-        visible={isCreateFolderVisible}
-        onClose={() => setIsCreateFolderVisible(false)}
-        onCreate={handleCreateFolder}
+        visible={folderCreation.visible}
+        onClose={folderCreation.close}
+        onCreate={folderCreation.create}
+      />
+      <FolderActionModal
+        visible={folderActions.visible}
+        folder={folderActions.selectedFolder}
+        onClose={folderActions.close}
+        onRename={folderActions.rename}
+        onDelete={folderActions.remove}
       />
     </SafeAreaView>
   );

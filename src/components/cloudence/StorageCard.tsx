@@ -30,6 +30,7 @@ export default function StorageChartCard({
                   100,
               )
             : 0;
+    const isStorageNearlyFull = percentage >= 80;
 
     // Responsive SVG Gauge dimensions
     const isSmallScreen = screenWidth < 380;
@@ -81,7 +82,11 @@ export default function StorageChartCard({
                                 cx={size / 2}
                                 cy={size / 2}
                                 r={radius}
-                                stroke="url(#gaugeGradient)"
+                                stroke={
+                                    isStorageNearlyFull
+                                        ? theme.colors.error
+                                        : "url(#gaugeGradient)"
+                                }
                                 strokeWidth={strokeWidth}
                                 strokeDasharray={`${circumference} ${circumference}`}
                                 strokeDashoffset={strokeDashoffset}

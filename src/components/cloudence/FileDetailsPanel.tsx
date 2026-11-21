@@ -1,4 +1,8 @@
-import { Pressable, Text, View } from "react-native";
+import {
+  Pressable,
+  Text,
+  View,
+} from "react-native";
 import { CloudFile } from "../../types/file";
 import { convertFileSize, formatDateTime } from "../../utils/fileUtils";
 import { styles } from "./FileActionModal.styles";

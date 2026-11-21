@@ -1,5 +1,9 @@
 import React from "react";
-import { View, Pressable, StyleSheet } from "react-native";
+import {
+  Pressable,
+  View,
+  StyleSheet,
+} from "react-native";
 import { LayoutGrid, List } from "lucide-react-native";
 import { ViewType } from "../../types/file";
 import { theme } from "../../constants/theme";

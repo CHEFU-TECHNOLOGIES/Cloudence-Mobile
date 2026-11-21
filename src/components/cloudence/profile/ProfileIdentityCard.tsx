@@ -1,5 +1,11 @@
 import { ExternalLink } from "lucide-react-native";
-import { Image, Linking, Pressable, Text, View } from "react-native";
+import {
+  Pressable,
+  Image,
+  Linking,
+  Text,
+  View,
+} from "react-native";
 import type { CloudenceUser } from "../../../auth/SessionContext";
 import { theme } from "../../../constants/theme";
 import { profileStyles as styles } from "../ProfileScreen.styles";

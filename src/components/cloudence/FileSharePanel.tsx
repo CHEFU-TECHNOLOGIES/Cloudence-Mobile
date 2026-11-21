@@ -1,6 +1,13 @@
-import { Trash } from "lucide-react-native";
-import { useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ChevronDown, Trash } from "lucide-react-native";
+import { useRef, useState } from "react";
+import {
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+  type ScrollViewInstance,
+} from "react-native";
 import { CloudFile } from "../../types/file";
 import { theme } from "../../constants/theme";
 import ConfirmDialog from "./ConfirmDialog";
@@ -17,14 +24,16 @@ type Props = {
   onShare?: (
     fileId: string,
     emails: string[],
-    shareExpiresAt?: string | null,
+    userExpiration?: { email: string; expiresAt: string | null },
   ) => void | Promise<void>;
 };
 
 export default function FileSharePanel({ file, onClose, onShare }: Props) {
   const [emailInput, setEmailInput] = useState("");
   const [emailToRemove, setEmailToRemove] = useState<string | null>(null);
-  const [expirationSaving, setExpirationSaving] = useState(false);
+  const [expandedExpirationEmail, setExpandedExpirationEmail] =
+    useState<string | null>(null);
+  const emailListRef = useRef<ScrollViewInstance>(null);
   const { showToast } = useToast();
 
   const submitAccessUpdate = (emails: string[]) => {
@@ -70,26 +79,42 @@ export default function FileSharePanel({ file, onClose, onShare }: Props) {
     setEmailToRemove(null);
   };
 
-  const updateExpiration = async (days: number | null) => {
-    if (!onShare || expirationSaving) return;
+  const updateExpiration = (email: string, days: number | null) => {
+    if (!onShare) return;
     const expiresAt = days === null ? null : expirationDate(days);
-    setExpirationSaving(true);
-    try {
-      await onShare(file.id, file.users, expiresAt);
-      showToast({
-        title: "Sharing updated",
-        message: days === null ? "Access will not expire." : `Access expires in ${days} days.`,
-        variant: "success",
+    setExpandedExpirationEmail(null);
+    onClose();
+    void Promise.resolve()
+      .then(() => onShare(file.id, file.users, { email, expiresAt }))
+      .then(() => {
+        showToast({
+          title: "Access updated",
+          message:
+            days === null
+              ? `${email} has no expiration date.`
+              : `${email}'s access expires in ${days} days.`,
+          variant: "success",
+        });
+      })
+      .catch((error: unknown) => {
+        showToast({
+          title: "Could not update access",
+          message: error instanceof Error ? error.message : "Please try again.",
+          variant: "error",
+        });
       });
-    } catch (error) {
-      showToast({
-        title: "Could not update expiration",
-        message: error instanceof Error ? error.message : "Please try again.",
-        variant: "error",
-      });
-    } finally {
-      setExpirationSaving(false);
-    }
+  };
+
+  const expirationLabel = (email: string) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    const perUser = file.shareExpiresAtByUser ?? {};
+    const hasIndividualExpiration = Object.prototype.hasOwnProperty.call(perUser, normalizedEmail);
+    const expiresAt = hasIndividualExpiration
+      ? perUser[normalizedEmail]
+      : file.shareExpiresAt;
+    return expiresAt
+      ? `Until ${new Date(expiresAt).toLocaleDateString()}`
+      : "No expiry";
   };
 
   return (
@@ -99,29 +124,6 @@ export default function FileSharePanel({ file, onClose, onShare }: Props) {
         <Text style={styles.subModalDesc}>
           Grant access by email to collaborate on this file.
         </Text>
-
-        <Text style={styles.sharedSectionTitle}>Access expiration</Text>
-        <View style={styles.expirationOptions}>
-          {[
-            { label: "Never", days: null },
-            { label: "7 days", days: 7 },
-            { label: "30 days", days: 30 },
-          ].map((option) => (
-            <Pressable
-              key={option.label}
-              disabled={expirationSaving}
-              onPress={() => void updateExpiration(option.days)}
-              style={styles.expirationOption}
-            >
-              <Text style={styles.expirationOptionText}>{option.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-        {file.shareExpiresAt && (
-          <Text style={styles.expirationCurrent}>
-            Current expiry: {new Date(file.shareExpiresAt).toLocaleDateString()}
-          </Text>
-        )}
 
         <View style={styles.addEmailRow}>
           <TextInput
@@ -142,23 +144,76 @@ export default function FileSharePanel({ file, onClose, onShare }: Props) {
           Users with access ({file.users.length})
         </Text>
         <ScrollView
+          ref={emailListRef}
           style={styles.emailList}
+          nestedScrollEnabled
+          keyboardShouldPersistTaps="handled"
+          scrollEventThrottle={16}
           showsVerticalScrollIndicator={false}
         >
           {file.users.map((email) => (
-            <View key={email} style={styles.emailItem}>
-              <Text numberOfLines={1} style={styles.emailText}>
-                {email}
-              </Text>
-              <Pressable
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={`Remove access for ${email}`}
-                onPress={() => setEmailToRemove(email)}
-                style={styles.removeEmailBtn}
-              >
-                <Trash size={15} color={theme.colors.error} />
-              </Pressable>
+            <View
+              key={email}
+              onLayout={(event) => {
+                if (expandedExpirationEmail !== email) return;
+                const { y, height } = event.nativeEvent.layout;
+                emailListRef.current?.scrollTo({
+                  y: Math.max(0, y + height - 210),
+                  animated: true,
+                });
+              }}
+            >
+              <View style={styles.emailItem}>
+                <View style={styles.collaboratorInfo}>
+                  <Text numberOfLines={1} style={styles.emailText}>
+                    {email}
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Set expiration for ${email}`}
+                    accessibilityState={{
+                      expanded: expandedExpirationEmail === email,
+                    }}
+                    onPress={() =>
+                      setExpandedExpirationEmail((current) =>
+                        current === email ? null : email,
+                      )
+                    }
+                    style={styles.expirationDropdownTrigger}
+                  >
+                    <Text style={styles.expirationTriggerText}>
+                      {expirationLabel(email)}
+                    </Text>
+                    <ChevronDown size={14} color={theme.colors.secondaryText} />
+                  </Pressable>
+                </View>
+                <Pressable
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove access for ${email}`}
+                  onPress={() => setEmailToRemove(email)}
+                  style={styles.removeEmailBtn}
+                >
+                  <Trash size={15} color={theme.colors.error} />
+                </Pressable>
+              </View>
+              {expandedExpirationEmail === email && (
+                <View style={styles.expirationDropdown}>
+                  {[
+                    { label: "Never", days: null },
+                    { label: "7 days", days: 7 },
+                    { label: "30 days", days: 30 },
+                  ].map((option) => (
+                    <Pressable
+                      key={option.label}
+                      onPress={() => void updateExpiration(email, option.days)}
+                      style={styles.expirationDropdownOption}
+                    >
+                      <Text style={styles.expirationOptionText}>{option.label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
             </View>
           ))}
           {file.users.length === 0 && (
