@@ -42,7 +42,8 @@
                     "useSQLCipher": true
                 }
             ],
-            "./plugins/withOptionalHardware"
+            "./plugins/withOptionalHardware",
+            "expo-iap"
         ],
         "experiments": {
             "typedRoutes": true,

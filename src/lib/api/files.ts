@@ -27,6 +27,9 @@ export type CloudenceUsage = {
   other: UsageCategory;
   used: number;
   all: number;
+  plan?: "free" | "50gb";
+  expiresAt?: string | null;
+  productId?: string | null;
 };
 
 export type TransferProgress = {
@@ -157,6 +160,20 @@ function parseUsage(value: unknown): CloudenceUsage {
   if (!isRecord(value)) {
     throw new Error("The storage usage response is invalid.");
   }
+  const plan = value.plan;
+  const expiresAt = value.expiresAt;
+  const productId = value.productId;
+  if (
+    (plan !== undefined && plan !== "free" && plan !== "50gb") ||
+    (expiresAt !== undefined &&
+      expiresAt !== null &&
+      typeof expiresAt !== "string") ||
+    (productId !== undefined &&
+      productId !== null &&
+      typeof productId !== "string")
+  ) {
+    throw new Error("The storage usage response contains invalid subscription data.");
+  }
   return {
     image: parseUsageCategory(value.image, "image"),
     document: parseUsageCategory(value.document, "document"),
@@ -165,6 +182,9 @@ function parseUsage(value: unknown): CloudenceUsage {
     other: parseUsageCategory(value.other, "other"),
     used: requiredNumber(value.used, "total used storage"),
     all: requiredNumber(value.all, "storage quota"),
+    plan: plan === "50gb" ? "50gb" : "free",
+    expiresAt: typeof expiresAt === "string" ? expiresAt : null,
+    productId: typeof productId === "string" ? productId : null,
   };
 }
 

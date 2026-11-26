@@ -1,6 +1,12 @@
 import { useState } from "react";
 import { router } from "expo-router";
-import { RefreshControl, ScrollView, StatusBar, Text } from "react-native";
+import {
+    Platform,
+    RefreshControl,
+    ScrollView,
+    StatusBar,
+    Text,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Constants from "expo-constants";
 
@@ -16,6 +22,7 @@ import { useCloudenceData } from "../../data/CloudenceDataProvider";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import ConfirmDialog from "../../components/cloudence/ConfirmDialog";
 import { useToast } from "../../components/cloudence/ToastProvider";
+import CloudenceSubscriptionCard from "../../components/cloudence/profile/CloudenceSubscriptionCard";
 
 export default function ProfileScreen() {
     const layout = useResponsiveLayout();
@@ -106,7 +113,15 @@ export default function ProfileScreen() {
 
                 <ProfileIdentityCard user={user} />
                 {usage ? (
-                    <StorageBreakdownCard usage={usage} />
+                    <>
+                        <StorageBreakdownCard usage={usage} />
+                        {Platform.OS === "android" ? (
+                            <CloudenceSubscriptionCard
+                                usage={usage}
+                                onEntitlementUpdated={refresh}
+                            />
+                        ) : null}
+                    </>
                 ) : isLoading ? (
                     <StorageBreakdownSkeleton />
                 ) : null}
