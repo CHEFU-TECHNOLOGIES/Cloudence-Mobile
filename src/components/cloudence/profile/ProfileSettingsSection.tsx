@@ -1,27 +1,8 @@
 import { ChevronRight, LogOut } from "lucide-react-native";
-import {
-  Pressable,
-  Text,
-  View,
-} from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { profileStyles as styles } from "../ProfileScreen.styles";
 import { theme } from "../../../constants/theme";
 import LegalLinksSection from "./LegalLinksSection";
-
-const settingsOptions = [
-    {
-        title: "Shared Access & Team",
-        subtitle: "Manage collaborator access to your files",
-    },
-    {
-        title: "Notifications & Alerts",
-        subtitle: "Quota limits and collaborator activity",
-    },
-    {
-        title: "Workspace Preferences",
-        subtitle: "Default upload views",
-    },
-];
 
 type Props = {
     onSharedAccessPress: () => void;
@@ -34,32 +15,39 @@ type Props = {
 
 export default function ProfileSettingsSection({
     onSharedAccessPress,
-    onNotificationsPress,
     onWorkspacePreferencesPress,
     onSwitchAccount,
     isSwitchingAccount,
     onSignOut,
 }: Props) {
+    const settingsOptions = [
+        {
+            id: "shared-access",
+            title: "Shared Access & Team",
+            subtitle: "Manage collaborator access to your files",
+            onPress: onSharedAccessPress,
+        },
+        {
+            id: "workspace-preferences",
+            title: "Workspace Preferences",
+            subtitle: "Default upload views",
+            onPress: onWorkspacePreferencesPress,
+        },
+    ];
+
     return (
         <>
             <View style={styles.optionsCard}>
-                {settingsOptions.map(({ title, subtitle }, index) => (
+                {settingsOptions.map(({ id, title, subtitle, onPress }, index) => (
                     <Pressable
-                        key={title}
+                        key={id}
+                        accessibilityRole="button"
                         style={[
                             styles.optionRow,
                             index === settingsOptions.length - 1 &&
                                 styles.noBorder,
                         ]}
-                        onPress={() => {
-                            if (title === "Shared Access & Team") {
-                                onSharedAccessPress();
-                            } else if (title === "Notifications & Alerts") {
-                                onNotificationsPress();
-                            } else if (title === "Workspace Preferences") {
-                                onWorkspacePreferencesPress();
-                            }
-                        }}
+                        onPress={onPress}
                     >
                         <View style={styles.optionTextBox}>
                             <Text style={styles.optionTitle}>{title}</Text>
@@ -75,7 +63,7 @@ export default function ProfileSettingsSection({
                 ))}
             </View>
 
-      <LegalLinksSection />
+            <LegalLinksSection />
 
             <View style={styles.accountActionsCard}>
                 <Pressable

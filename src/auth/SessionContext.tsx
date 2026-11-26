@@ -40,7 +40,7 @@ type SessionContextValue = {
   user: CloudenceUser | null;
   error: string | null;
   isSigningIn: boolean;
-  signIn: () => Promise<void>;
+  signIn: (mode?: "login" | "register") => Promise<void>;
   getAccessToken: () => Promise<string>;
   retrySessionRestore: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -202,7 +202,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     [setUnauthenticated],
   );
 
-  const signIn = useCallback(async () => {
+  const signIn = useCallback(async (mode: "login" | "register" = "login") => {
     if (signInPendingRef.current) return;
     signInPendingRef.current = true;
     setIsSigningIn(true);
@@ -220,7 +220,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         extraParams: { nonce: randomUUID() },
       });
       const authorizeUrl = await request.makeAuthUrlAsync(OAUTH_DISCOVERY);
-      const accountUrl = new URL("/login", ACCOUNT_BASE_URL);
+      const accountUrl = new URL(`/${mode}`, ACCOUNT_BASE_URL);
       accountUrl.searchParams.set("app", "cloudence");
       accountUrl.searchParams.set("returnTo", authorizeUrl);
       accountUrl.searchParams.set("prompt", "select_account");
