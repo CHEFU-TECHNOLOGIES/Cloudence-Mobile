@@ -27,6 +27,7 @@ function AppNavigator() {
         <Stack.Screen name="shared-access" />
         <Stack.Screen name="workspace-preferences" />
         <Stack.Screen name="notifications-settings" />
+        <Stack.Screen name="storage-health" />
       </Stack.Protected>
       <Stack.Protected guard={status !== "authenticated"} redirectTo="/">
         <Stack.Screen name="sign-in" />

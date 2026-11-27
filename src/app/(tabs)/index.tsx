@@ -19,6 +19,7 @@ import RecentFiles from "../../components/cloudence/RecentFiles";
 import BulkFileSelectionActions from "../../components/cloudence/BulkFileSelectionActions";
 import SearchBar from "../../components/cloudence/SearchBar";
 import StorageCard from "../../components/cloudence/StorageCard";
+import StorageHealthEntry from "../../components/cloudence/storage-health/StorageHealthEntry";
 import WorkspaceStatus from "../../components/cloudence/WorkspaceStatus";
 import DashboardSkeleton from "../../components/cloudence/skeletons/DashboardSkeleton";
 import StorageCardSkeleton from "../../components/cloudence/skeletons/StorageCardSkeleton";
@@ -207,6 +208,7 @@ export default function DashboardScreen() {
               ) : isLoading ? (
                 <StorageCardSkeleton />
               ) : null}
+              <StorageHealthEntry />
             </View>
 
             {/* Categories Grid */}

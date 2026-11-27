@@ -15,6 +15,13 @@ export default function DashboardSkeleton() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Storage</Text>
         <StorageCardSkeleton />
+        <View style={styles.healthEntry}>
+          <View style={styles.recentText}>
+            <SkeletonBlock width={148} height={13} borderRadius={6} />
+            <SkeletonBlock width={180} height={11} borderRadius={5} />
+          </View>
+          <SkeletonBlock width={16} height={16} borderRadius={5} />
+        </View>
       </View>
 
       <View style={styles.section}>
@@ -62,6 +69,7 @@ export default function DashboardSkeleton() {
 }
 
 const styles = StyleSheet.create({
+  healthEntry: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14 },
   section: {
     marginTop: 25,
   },
