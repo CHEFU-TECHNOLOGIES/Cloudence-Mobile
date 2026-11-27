@@ -24,6 +24,7 @@ import BulkFileSelectionActions from "../../components/cloudence/BulkFileSelecti
 import WorkspaceStatus from "../../components/cloudence/WorkspaceStatus";
 import FileCollectionSkeleton from "../../components/cloudence/skeletons/FileCollectionSkeleton";
 import { useToast } from "../../components/cloudence/ToastProvider";
+import BackgroundRemoverTool from "../../components/cloudence/BackgroundRemoverTool";
 
 import { useCloudenceData } from "../../data/CloudenceDataProvider";
 import { theme } from "../../constants/theme";
@@ -163,6 +164,8 @@ export default function ImagesScreen() {
 
         <Text style={styles.title}>Images & Vectors</Text>
 
+        <BackgroundRemoverTool />
+
         <WorkspaceStatus
           error={error}
           offline={isOffline}
@@ -286,6 +289,7 @@ export default function ImagesScreen() {
         uploadProgress={uploadProgress}
         onCancelUpload={cancelUpload}
       />
+
     </SafeAreaView>
   );
 }

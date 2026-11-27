@@ -112,10 +112,10 @@ export default function SubscriptionPlans({ usage, billing }: Props) {
                 </View>
                 <View style={styles.benefitList}>
                     {[
-                        "50 GB total cloud storage",
-                        "25 times the space of Free",
-                        "Photos, videos & documents",
-                        "Your existing sharing tools included",
+                        "50 GB of secure cloud storage",
+                        "Larger file uploads and sharing",
+                        "Priority support and faster sync",
+                        "AI-powered background removal",
                     ].map((benefit) => (
                         <View key={benefit} style={styles.benefitRow}>
                             <Check

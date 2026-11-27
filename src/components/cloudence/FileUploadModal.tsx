@@ -14,7 +14,8 @@ import * as DocumentPicker from "expo-document-picker";
 import { FileText, Upload, X } from "lucide-react-native";
 import { theme } from "../../constants/theme";
 import { useToast } from "./ToastProvider";
-import UploadQueueList, { type UploadQueueItem } from "./UploadQueueList";
+import UploadQueueList from "./UploadQueueList";
+import { useFileUploadQueue } from "./FileUploadQueueContext";
 
 type Props = {
     visible: boolean;
@@ -26,8 +27,6 @@ type Props = {
     uploadProgress?: number | null;
     onCancelUpload?: () => void;
 };
-
-const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 function messageFromError(error: unknown) {
     return error instanceof Error
@@ -44,7 +43,7 @@ export default function FileUploadModal({
 }: Props) {
     const { width, height } = useWindowDimensions();
     const { showToast } = useToast();
-    const [queue, setQueue] = useState<UploadQueueItem[]>([]);
+    const { queue, setQueue, addAssetsToQueue } = useFileUploadQueue();
     const [uploading, setUploading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const uploadingRef = useRef(false);
@@ -59,27 +58,7 @@ export default function FileUploadModal({
             });
             if (result.canceled) return;
 
-            setQueue((current) => {
-                const knownUris = new Set(current.map((item) => item.asset.uri));
-                const newItems: UploadQueueItem[] = [];
-                for (const asset of result.assets) {
-                    if (knownUris.has(asset.uri)) continue;
-                    knownUris.add(asset.uri);
-                    newItems.push({
-                        id: `${asset.uri}:${Date.now()}:${Math.random()}`,
-                        asset,
-                        uploadName: "",
-                        status:
-                            asset.size !== undefined && asset.size > MAX_UPLOAD_BYTES
-                                ? "invalid"
-                                : "queued",
-                    });
-                }
-                return [
-                    ...current,
-                    ...newItems,
-                ];
-            });
+            addAssetsToQueue(result.assets);
         } catch (pickerError) {
             const message = messageFromError(pickerError);
             setError(message);

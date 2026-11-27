@@ -1,89 +1,124 @@
-
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  Platform,
-  StyleSheet,
+    ActivityIndicator,
+    Platform,
+    Pressable,
+    StyleSheet,
 } from "react-native";
-
+import { ScanLine } from "lucide-react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as DocumentPicker from "expo-document-picker";
+import { File } from "expo-file-system";
 import {
-  launchDocumentScannerAsync,
-  ScannerModeOptions,
-  ResultFormatOptions,
+    launchDocumentScannerAsync,
+    ResultFormatOptions,
+    ScannerModeOptions,
 } from "@infinitered/react-native-mlkit-document-scanner";
+import { theme } from "../constants/theme";
 
-export default function DocumentScanner() {
-  const [scanning, setScanning] = useState(false);
+type Props = {
+    visible: boolean;
+    disabled?: boolean;
+    onScanned: (asset: DocumentPicker.DocumentPickerAsset) => void;
+    onError: (error: Error) => void;
+};
 
-  const scanDocument = async () => {
-    if (Platform.OS !== "android") {
-      Alert.alert(
-        "Not supported",
-        "This scanner is currently available on Android."
-      );
-      return;
-    }
+export default function DocumentScanner({
+    visible,
+    disabled = false,
+    onScanned,
+    onError,
+}: Props) {
+    const [scanning, setScanning] = useState(false);
+    const scanningRef = useRef(false);
+    const insets = useSafeAreaInsets();
 
-    try {
-      setScanning(true);
+    if (Platform.OS !== "android" || !visible) return null;
 
-      const result = await launchDocumentScannerAsync({
-        pageLimit: 30,
-        galleryImportAllowed: true,
-        scannerMode: ScannerModeOptions.FULL,
-        resultFormats: ResultFormatOptions.ALL,
-      });
+    const scanDocument = async () => {
+        if (disabled || scanningRef.current) return;
 
-      console.log("Scanner result:", result);
+        scanningRef.current = true;
+        setScanning(true);
+        try {
+            const result = await launchDocumentScannerAsync({
+                pageLimit: 30,
+                galleryImportAllowed: true,
+                scannerMode: ScannerModeOptions.FULL,
+                resultFormats: ResultFormatOptions.PDF,
+            });
+            if (result.canceled) return;
+            if (!result.pdf?.uri) {
+                throw new Error("The scan did not produce a PDF. Please try again.");
+            }
 
-    } catch (error) {
-      console.error("Scanning error:", error);
+            const scannedFile = new File(result.pdf.uri);
+            if (!scannedFile.exists || scannedFile.size <= 0) {
+                throw new Error("The scanned PDF could not be read. Please try again.");
+            }
 
-      Alert.alert(
-        "Scanner",
-        "Scanning was interrupted or could not be completed."
-      );
-    } finally {
-      setScanning(false);
-    }
-  };
+            onScanned({
+                uri: result.pdf.uri,
+                name: `document-scan-${Date.now()}.pdf`,
+                mimeType: "application/pdf",
+                size: scannedFile.size,
+                lastModified: Date.now(),
+            });
+        } catch (error) {
+            onError(
+                error instanceof Error
+                    ? error
+                    : new Error("Document scanning failed. Please try again."),
+            );
+        } finally {
+            scanningRef.current = false;
+            setScanning(false);
+        }
+    };
 
-  return (
-    <View style={styles.container}>
-      <TouchableOpacity
-        style={styles.button}
-        onPress={scanDocument}
-        disabled={scanning}
-      >
-        {scanning ? (
-          <ActivityIndicator color="#FFFFFF" />
-        ) : (
-          <Text style={styles.buttonText}>
-            Scan Document
-          </Text>
-        )}
-      </TouchableOpacity>
-    </View>
-  );
+    const isDisabled = disabled || scanning;
+
+    return (
+        <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Scan document"
+            accessibilityState={{ disabled: isDisabled, busy: scanning }}
+            disabled={isDisabled}
+            onPress={() => void scanDocument()}
+            style={({ pressed }) => [
+                styles.button,
+                { bottom: insets.bottom + 82 },
+                pressed && !isDisabled && styles.pressed,
+                isDisabled && styles.disabled,
+            ]}
+        >
+            {scanning ? (
+                <ActivityIndicator color="#FFFFFF" />
+            ) : (
+                <ScanLine size={25} color="#FFFFFF" strokeWidth={2.2} />
+            )}
+        </Pressable>
+    );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 16,
-  },
-  button: {
-    backgroundColor: "#2563EB",
-    padding: 16,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  buttonText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "600",
-  },
+    button: {
+        position: "absolute",
+        right: 20,
+        width: 58,
+        height: 58,
+        justifyContent: "center",
+        alignItems: "center",
+        borderRadius: theme.radius.full,
+        backgroundColor: theme.colors.brand,
+        ...theme.shadows.floating,
+        zIndex: 100,
+        elevation: 8,
+    },
+    pressed: {
+        opacity: 0.82,
+    },
+    disabled: {
+        opacity: 0.5,
+    },
 });

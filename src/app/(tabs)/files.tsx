@@ -31,6 +31,7 @@ import { useBulkFileActions } from "../../hooks/useBulkFileActions";
 import { useFolderCreation } from "../../hooks/useFolderCreation";
 import * as DocumentPicker from "expo-document-picker";
 import { filesScreenStyles as styles } from "../../components/cloudence/FilesScreen.styles";
+import { useFileUploadQueue } from "../../components/cloudence/FileUploadQueueContext";
 
 const filterCategories = ["All", "Documents", "Images", "Media", "Others"];
 
@@ -38,6 +39,10 @@ export default function FilesScreen() {
   const layout = useResponsiveLayout();
   const { defaultFileView } = useWorkspacePreferences();
   const { showToast } = useToast();
+  const {
+    filesUploadRequested,
+    clearFilesUploadRequest,
+  } = useFileUploadQueue();
   const {
     files,
     isLoading,
@@ -441,8 +446,11 @@ export default function FilesScreen() {
       />
 
       <FileUploadModal
-        visible={isUploadModalVisible}
-        onClose={() => setIsUploadModalVisible(false)}
+        visible={isUploadModalVisible || filesUploadRequested}
+        onClose={() => {
+          setIsUploadModalVisible(false);
+          clearFilesUploadRequest();
+        }}
         onFileUploaded={handleFileUploaded}
         uploadProgress={uploadProgress}
         onCancelUpload={cancelUpload}

@@ -20,9 +20,7 @@ type Props = {
     blocked: boolean;
 };
 
-export default function SubscriptionPromotion({
-    blocked,
-}: Props) {
+export default function SubscriptionPromotion({ blocked }: Props) {
     const { user, getAccessToken } = useSession();
     const { usage, isOffline } = useCloudenceData();
     const { readyUserId, readySequence, claim } = useSubscriptionPromotion();
@@ -51,7 +49,14 @@ export default function SubscriptionPromotion({
         return () => {
             current = false;
         };
-    }, [available, claim, getAccessToken, readyUserId, readySequence, user?.id]);
+    }, [
+        available,
+        claim,
+        getAccessToken,
+        readyUserId,
+        readySequence,
+        user?.id,
+    ]);
 
     const dismiss = () => {
         setOpenUserId(null);
@@ -111,7 +116,8 @@ export default function SubscriptionPromotion({
                             Upgrade to Cloudence Pro
                         </Text>
                         <Text style={styles.subtitle}>
-                            Get more space and powerful features for your files and collaboration.
+                            Get more space and powerful features for your files
+                            and collaboration.
                         </Text>
                         <View style={styles.storagePanel}>
                             <Image
@@ -133,6 +139,7 @@ export default function SubscriptionPromotion({
                                 "50 GB of secure cloud storage",
                                 "Larger file uploads and sharing",
                                 "Priority support and faster sync",
+                                "AI-powered background removal",
                             ].map((benefit) => (
                                 <View key={benefit} style={styles.benefitRow}>
                                     <View style={styles.checkCircle}>
