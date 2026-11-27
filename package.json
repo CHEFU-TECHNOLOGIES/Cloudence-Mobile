@@ -59,6 +59,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "test:cache": "node --test tests/*-cache.test.cjs tests/cache-policy.test.cjs",
+    "test:promotion": "node --test tests/subscription-promotion.test.cjs tests/promotion-screen.test.cjs",
     "ota": "eas update --channel production --environment production --platform android"
   },
   "private": true

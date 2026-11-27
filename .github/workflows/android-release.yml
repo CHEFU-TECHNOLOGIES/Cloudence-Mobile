@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: android-release-${{ github.ref }}
+  group: android-release
   cancel-in-progress: false
 
 jobs:
@@ -33,6 +33,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           persist-credentials: false
+          ref: ${{ github.ref_type == 'branch' && github.ref_name || github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -72,16 +73,36 @@ jobs:
       - name: Check TypeScript
         run: npx tsc --noEmit
 
-      - name: Set release version and Android version code
+      - name: Read saved Android version code
+        id: saved-version
+        uses: actions/github-script@v8
         env:
-          ANDROID_VERSION_CODE: ${{ github.run_number }}
+          TARGET_BRANCH: ${{ github.ref_type == 'branch' && github.ref_name || github.event.repository.default_branch }}
+        with:
+          script: |
+            const { data: file } = await github.rest.repos.getContent({
+              ...context.repo, path: 'app.json', ref: process.env.TARGET_BRANCH,
+            });
+            const config = JSON.parse(Buffer.from(file.content, 'base64').toString('utf8'));
+            const code = config.expo.android.versionCode;
+            if (!Number.isSafeInteger(code) || code < 1) {
+              throw new Error('Saved Android version code is invalid.');
+            }
+            core.setOutput('version-code', code);
+
+      - name: Set release version and Android version code
+        id: release-version
+        env:
+          SAVED_ANDROID_VERSION_CODE: ${{ steps.saved-version.outputs.version-code }}
         run: |
           node <<'NODE'
           const fs = require("node:fs");
           const config = JSON.parse(fs.readFileSync("app.json", "utf8"));
-          const versionCode = Number(process.env.ANDROID_VERSION_CODE);
-          if (!Number.isSafeInteger(versionCode) || versionCode < 1) {
-            throw new Error("GitHub run number is not a valid Android version code.");
+          const previousCode = Number(process.env.SAVED_ANDROID_VERSION_CODE);
+          const versionCode = previousCode + 1;
+          if (!Number.isSafeInteger(previousCode) || previousCode < 1 ||
+              !Number.isSafeInteger(versionCode) || versionCode > 2100000000) {
+            throw new Error("Android version code must be an integer between 1 and 2100000000.");
           }
           const versionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
           const baseVersion = config.expo.version;
@@ -95,9 +116,8 @@ jobs:
             }
             config.expo.version = tagVersion;
           } else {
-            // The run number keeps advancing even though CI does not commit app.json.
             const [major, minor, patch] = baseVersion.split(".");
-            const nextPatch = Number(patch) + versionCode;
+            const nextPatch = Number(patch) + 1;
             if (!Number.isSafeInteger(nextPatch)) {
               throw new Error("Generated patch version exceeds the safe integer range.");
             }
@@ -105,6 +125,8 @@ jobs:
           }
           config.expo.android.versionCode = versionCode;
           fs.writeFileSync("app.json", `${JSON.stringify(config, null, 2)}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT,
+            `version=${config.expo.version}\nversion-code=${versionCode}\n`);
           console.log(`Release version: ${config.expo.version}; Android version code: ${versionCode}`);
           NODE
 
@@ -215,6 +237,7 @@ jobs:
         env:
           ARTIFACT_URL: ${{ steps.release-artifacts.outputs.artifact-url }}
           RELEASE_VERSION: ${{ steps.release-files.outputs.version }}
+          RELEASE_VERSION_CODE: ${{ steps.release-version.outputs.version-code }}
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
           ### Cloudence Android release $RELEASE_VERSION
@@ -223,6 +246,58 @@ jobs:
 
           Install the APK directly on Android or upload the AAB to Google Play.
           Tag builds use the tag version and publish both files to GitHub Releases.
-          Manual builds add the workflow run number to the patch version in app.json.
-          Android version code: $GITHUB_RUN_NUMBER.
+          Manual builds increase the patch version by one.
+          Android version code: $RELEASE_VERSION_CODE.
+          Version changes are saved by the final step only after all release steps succeed.
           EOF
+
+      - name: Sync released version back to app.json
+        if: ${{ success() }}
+        uses: actions/github-script@v8
+        env:
+          RELEASE_VERSION: ${{ steps.release-version.outputs.version }}
+          RELEASE_VERSION_CODE: ${{ steps.release-version.outputs.version-code }}
+          TARGET_BRANCH: ${{ github.ref_type == 'branch' && github.ref_name || github.event.repository.default_branch }}
+        with:
+          script: |
+            const branch = process.env.TARGET_BRANCH;
+            const version = process.env.RELEASE_VERSION;
+            const versionCode = Number(process.env.RELEASE_VERSION_CODE);
+            const repo = context.repo;
+            const newerVersion = (left, right) => {
+              const a = left.split('.').map(Number);
+              const b = right.split('.').map(Number);
+              for (let i = 0; i < 3; i++) {
+                if (a[i] !== b[i]) return a[i] > b[i];
+              }
+              return false;
+            };
+            for (let attempt = 0; attempt < 3; attempt++) {
+              const { data: file } = await github.rest.repos.getContent({
+                ...repo, path: 'app.json', ref: branch,
+              });
+              const config = JSON.parse(Buffer.from(file.content, 'base64').toString('utf8'));
+              const currentCode = config.expo.android.versionCode;
+              if (currentCode === versionCode && config.expo.version === version) {
+                core.info('app.json already matches this release.');
+                return;
+              }
+              if (currentCode >= versionCode || newerVersion(config.expo.version, version)) {
+                core.warning(`Skipped version sync: ${branch} already has a newer version.`);
+                return;
+              }
+              // Merge only version fields into the latest file, preserving other app changes.
+              config.expo.version = version;
+              config.expo.android.versionCode = versionCode;
+              try {
+                await github.rest.repos.createOrUpdateFileContents({
+                  ...repo, path: 'app.json', branch, sha: file.sha,
+                  message: `chore: sync Android release ${version} (${versionCode}) [skip ci]`,
+                  content: Buffer.from(`${JSON.stringify(config, null, 2)}\n`).toString('base64'),
+                });
+                core.info(`Synced ${branch}/app.json to ${version} (${versionCode}).`);
+                return;
+              } catch (error) {
+                if (error.status !== 409 || attempt === 2) throw error;
+              }
+            }

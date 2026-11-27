@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { router, useLocalSearchParams } from "expo-router";
 import { ChevronRight } from "lucide-react-native";
 import { Platform, Pressable, Text, View } from "react-native";
 import { theme } from "../../../constants/theme";
@@ -15,7 +16,13 @@ type Props = {
 };
 
 export default function CloudenceSubscriptionCard(props: Props) {
-    const [plansVisible, setPlansVisible] = useState(false);
+    const [openedLocally, setOpenedLocally] = useState(false);
+    const { subscription } = useLocalSearchParams<{ subscription?: string }>();
+    const plansVisible = openedLocally || subscription === "1";
+    const closePlans = () => {
+        setOpenedLocally(false);
+        if (subscription === "1") router.setParams({ subscription: undefined });
+    };
     const billing = useCloudenceSubscription({ ...props, plansVisible });
     if (Platform.OS !== "android") return null;
 
@@ -29,7 +36,7 @@ export default function CloudenceSubscriptionCard(props: Props) {
                         : "View subscription plans"
                 }
                 accessibilityHint="Opens subscription details and available plans"
-                onPress={() => setPlansVisible(true)}
+                onPress={() => setOpenedLocally(true)}
                 style={({ pressed }) => [
                     styles.summaryCard,
                     pressed && styles.pressed,
@@ -47,7 +54,7 @@ export default function CloudenceSubscriptionCard(props: Props) {
             </Pressable>
             <SubscriptionSheet
                 visible={plansVisible}
-                onClose={() => setPlansVisible(false)}
+                onClose={closePlans}
             >
                 <SubscriptionPlans usage={props.usage} billing={billing} />
             </SubscriptionSheet>

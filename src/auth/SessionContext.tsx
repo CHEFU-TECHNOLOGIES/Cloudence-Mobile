@@ -30,6 +30,7 @@ import {
   toStoredTokens,
 } from "../lib/auth/tokens";
 import { unregisterPushDevice } from "../lib/notifications/pushNotifications";
+import { initializePromotion } from "../lib/subscriptions/promotionState";
 
 export type CloudenceUser = StoredUser;
 
@@ -135,6 +136,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     let activeTokens = storedTokens;
     tokensRef.current = activeTokens;
     if (activeTokens.user) {
+      await initializePromotion(activeTokens.user.id, true);
       setAuthenticated(activeTokens, activeTokens.user);
       return;
     }
@@ -165,6 +167,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const currentUser = await loadCurrentUser(activeTokens.accessToken);
+      await initializePromotion(currentUser.id, true);
       const tokensWithUser = { ...activeTokens, user: currentUser };
       await saveStoredTokens(tokensWithUser);
       setAuthenticated(tokensWithUser, currentUser);
@@ -253,6 +256,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       );
       const nextTokens = toStoredTokens(tokenResponse);
       const currentUser = await loadCurrentUser(nextTokens.accessToken);
+      await initializePromotion(currentUser.id, false);
       const tokensWithUser = { ...nextTokens, user: currentUser };
       await saveStoredTokens(tokensWithUser);
       setAuthenticated(tokensWithUser, currentUser);

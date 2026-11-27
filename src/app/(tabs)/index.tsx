@@ -23,6 +23,7 @@ import StorageHealthEntry from "../../components/cloudence/storage-health/Storag
 import WorkspaceStatus from "../../components/cloudence/WorkspaceStatus";
 import DashboardSkeleton from "../../components/cloudence/skeletons/DashboardSkeleton";
 import StorageCardSkeleton from "../../components/cloudence/skeletons/StorageCardSkeleton";
+import SubscriptionPromotion from "../../components/cloudence/subscription/SubscriptionPromotion";
 import { useToast } from "../../components/cloudence/ToastProvider";
 
 import * as DocumentPicker from "expo-document-picker";
@@ -261,6 +262,9 @@ export default function DashboardScreen() {
       )}
 
       {/* Interactive Action Modals */}
+      <SubscriptionPromotion
+        blocked={isActionModalVisible || isUploadModalVisible || selection.selectionMode || !!query.trim()}
+      />
       <FileActionModal
         visible={isActionModalVisible}
         file={selectedFileForAction}
