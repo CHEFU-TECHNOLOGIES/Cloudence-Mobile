@@ -61,11 +61,12 @@ export default function FileThumbnail({ file, style }: Props) {
           source={{
             uri: previewUrl,
             headers: getAuthHeaders(accessToken),
-            cacheKey: `${user?.id ?? "account"}:${file.id}:preview`,
+            cacheKey: `${user?.id ?? "account"}:${file.id}:${file.updatedAt}:preview`,
           }}
           style={styles.preview}
           contentFit="cover"
-          cachePolicy="memory"
+          cachePolicy="memory-disk"
+          recyclingKey={`${user?.id}:${file.id}:${file.updatedAt}`}
           transition={120}
           accessibilityLabel={`Preview of ${file.name}`}
           onError={() => setPreviewFailed(true)}

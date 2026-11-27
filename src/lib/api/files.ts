@@ -1,11 +1,12 @@
 import { fetch as expoFetch } from "expo/fetch";
 import * as DocumentPicker from "expo-document-picker";
-import { File, Paths, UploadType } from "expo-file-system";
+import { File, UploadType } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { Platform } from "react-native";
 import { CloudFile, FileCategory, FileType } from "../../types/file";
 import { convertFileSize } from "../../utils/fileUtils";
 import { API_BASE_URL } from "./config";
+import { reuseOrDownloadFile } from "../cache/mediaCache";
 import {
   apiRequest,
   ApiError,
@@ -362,6 +363,7 @@ export async function downloadFile(
   file: CloudFile,
   onProgress?: (progress: TransferProgress) => void,
   signal?: AbortSignal,
+  userId?: string,
 ) {
   const downloadInfo = await apiRequest<unknown>(
     `/cloudence/files/${encodeURIComponent(file.id)}/download?json=true`,
@@ -398,10 +400,15 @@ export async function downloadFile(
     return;
   }
 
-  const localFile = await File.downloadFileAsync(
-    downloadUrl,
-    new File(Paths.cache, fileName),
+  if (!userId) throw new Error("Sign in to download Cloudence files.");
+  const localFile = await reuseOrDownloadFile(
+    userId,
     {
+      id: file.id, name: fileName,
+      sha256: typeof downloadInfo.sha256 === "string" ? downloadInfo.sha256 : undefined,
+      size: typeof downloadInfo.size === "number" ? downloadInfo.size : undefined,
+    },
+    downloadUrl, {
       headers: getAuthHeaders(accessToken),
       idempotent: true,
       signal,
@@ -409,8 +416,11 @@ export async function downloadFile(
         onProgress?.({ transferredBytes: bytesWritten, totalBytes }),
     },
   );
+  onProgress?.({ transferredBytes: localFile.size, totalBytes: localFile.size });
 
-  if (await localFile.canPreview()) {
+  const canPreview = await localFile.canPreview();
+  if (signal?.aborted) throw new Error("The download was canceled.");
+  if (canPreview) {
     await localFile.preview({ title: file.name });
     return;
   }
@@ -418,6 +428,7 @@ export async function downloadFile(
   if (!(await Sharing.isAvailableAsync())) {
     throw new Error("No app is available to open or share this file.");
   }
+  if (signal?.aborted) throw new Error("The download was canceled.");
 
   await Sharing.shareAsync(localFile.uri, {
     dialogTitle: file.name,

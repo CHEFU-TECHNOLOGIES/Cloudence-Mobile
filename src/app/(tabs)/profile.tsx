@@ -14,7 +14,7 @@ import { useSession } from "../../auth/SessionContext";
 import ProfileIdentityCard from "../../components/cloudence/profile/ProfileIdentityCard";
 import ProfileSettingsSection from "../../components/cloudence/profile/ProfileSettingsSection";
 import StorageBreakdownCard from "../../components/cloudence/profile/StorageBreakdownCard";
-import StorageBreakdownSkeleton from "../../components/cloudence/skeletons/StorageBreakdownSkeleton";
+import AccountStorageSkeleton from "../../components/cloudence/skeletons/AccountStorageSkeleton";
 import { profileStyles as styles } from "../../components/cloudence/ProfileScreen.styles";
 import WorkspaceStatus from "../../components/cloudence/WorkspaceStatus";
 import { theme } from "../../constants/theme";
@@ -112,6 +112,9 @@ export default function ProfileScreen() {
                 />
 
                 <ProfileIdentityCard user={user} />
+                {usage || isLoading ? (
+                    <Text accessibilityRole="header" style={styles.sectionTitle}>Storage &amp; Plan</Text>
+                ) : null}
                 {usage ? (
                     <>
                         <StorageBreakdownCard usage={usage} />
@@ -123,7 +126,7 @@ export default function ProfileScreen() {
                         ) : null}
                     </>
                 ) : isLoading ? (
-                    <StorageBreakdownSkeleton />
+                    <AccountStorageSkeleton />
                 ) : null}
                 <ProfileSettingsSection
                     onSharedAccessPress={() => router.push("/shared-access")}

@@ -1,11 +1,11 @@
 import { ExternalLink } from "lucide-react-native";
 import {
   Pressable,
-  Image,
   Linking,
   Text,
   View,
 } from "react-native";
+import { Image } from "expo-image";
 import type { CloudenceUser } from "../../../auth/SessionContext";
 import { theme } from "../../../constants/theme";
 import { profileStyles as styles } from "../ProfileScreen.styles";
@@ -42,7 +42,7 @@ export default function ProfileIdentityCard({ user }: Props) {
     <View style={styles.profileCard}>
       <View style={styles.avatarWrapper}>
         {user?.avatar ? (
-          <Image source={{ uri: user.avatar }} style={styles.avatar} />
+          <Image source={{ uri: user.avatar, cacheKey: `${user.id}:avatar:${user.avatar}` }} style={styles.avatar} cachePolicy="memory-disk" />
         ) : (
           <Text style={styles.avatarInitials}>{initials}</Text>
         )}

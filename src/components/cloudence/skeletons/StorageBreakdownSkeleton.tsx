@@ -1,21 +1,26 @@
 import { StyleSheet, View } from "react-native";
-import { theme } from "../../../constants/theme";
+import { profileStyles } from "../ProfileScreen.styles";
 import SkeletonBlock from "./SkeletonBlock";
 
 export default function StorageBreakdownSkeleton() {
   return (
-    <View style={styles.card} accessibilityLabel="Loading storage usage">
-      <View style={styles.header}>
+    <View style={profileStyles.storageBreakdownCard} accessibilityLabel="Loading storage usage" accessibilityState={{ busy: true }}>
+      <View style={profileStyles.storageHeader}>
         <SkeletonBlock width={36} height={36} borderRadius={10} />
         <View style={styles.headerText}>
-          <SkeletonBlock width="64%" height={13} borderRadius={6} />
-          <SkeletonBlock width="88%" height={10} borderRadius={5} />
+          <SkeletonBlock width={140} height={17} borderRadius={6} />
+          <SkeletonBlock width="88%" height={13} borderRadius={5} />
         </View>
       </View>
-      <SkeletonBlock height={8} borderRadius={4} />
-      <View style={styles.legend}>
+      <View style={profileStyles.segmentedBar}>
+        <SkeletonBlock height={8} borderRadius={4} />
+      </View>
+      <View style={profileStyles.legendGrid}>
         {[0, 1, 2, 3].map((item) => (
-          <SkeletonBlock key={item} width="46%" height={12} borderRadius={6} />
+          <View key={item} style={profileStyles.legendItem}>
+            <SkeletonBlock width={8} height={8} borderRadius={4} />
+            <SkeletonBlock width="75%" height={13} borderRadius={5} />
+          </View>
         ))}
       </View>
     </View>
@@ -23,28 +28,8 @@ export default function StorageBreakdownSkeleton() {
 }
 
 const styles = StyleSheet.create({
-  card: {
-    padding: 16,
-    marginBottom: 16,
-    borderRadius: theme.radius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface,
-    gap: 14,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
   headerText: {
     flex: 1,
-    gap: 6,
-  },
-  legend: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    rowGap: 10,
+    gap: 2,
   },
 });

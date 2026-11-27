@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState } from "react-native";
 import * as Network from "expo-network";
 import { useSession } from "../auth/SessionContext";
-import { clearUserMetadataCache, readMetadataCache, writeMetadataCache } from "../lib/cache/metadataCache";
+import { readMetadataCache, writeMetadataCache } from "../lib/cache/metadataCache";
 import { CloudenceUsage, listFiles, getUsage } from "../lib/api/files";
 import { CloudFile } from "../types/file";
 import {
@@ -14,6 +13,9 @@ import {
   USAGE_CACHE_KEY,
 } from "./workspaceMetadata";
 import { useCloudenceFileActions } from "./useCloudenceFileActions";
+import { accountCacheGeneration, isCacheFresh, WORKSPACE_FRESH_MS } from "../lib/cache/cachePolicy";
+import { clearAccountCaches } from "../lib/cache/clearAccountCaches";
+import { useCacheRevalidation } from "../hooks/useCacheRevalidation";
 
 export function useCloudenceWorkspace() {
   const { status, user, getAccessToken } = useSession();
@@ -33,7 +35,9 @@ export function useCloudenceWorkspace() {
   const isOfflineRef = useRef(false);
   const activeRequestRef = useRef<AbortController | null>(null);
   const refreshPromiseRef = useRef<Promise<boolean> | null>(null);
+  const forcedRefreshRef = useRef<Promise<boolean> | null>(null);
   const previousUserIdRef = useRef<string | null>(null);
+  const cacheReadyForUserRef = useRef<string | null>(null);
 
   const getFiles = useCallback(() => filesRef.current, []);
   const getRecentFiles = useCallback(() => recentFilesRef.current, []);
@@ -54,7 +58,7 @@ export function useCloudenceWorkspace() {
           FILES_CACHE_KEY,
           stripSignedUrls(nextFiles),
         );
-        filesCachedAtRef.current = Date.now();
+        if (previousUserIdRef.current === activeUserId) filesCachedAtRef.current = Date.now();
         return null;
       } catch (cacheError) {
         return messageFromError(cacheError);
@@ -67,7 +71,7 @@ export function useCloudenceWorkspace() {
     async (activeUserId: string, nextUsage: CloudenceUsage) => {
       try {
         await writeMetadataCache(activeUserId, USAGE_CACHE_KEY, nextUsage);
-        usageCachedAtRef.current = Date.now();
+        if (previousUserIdRef.current === activeUserId) usageCachedAtRef.current = Date.now();
         return null;
       } catch (cacheError) {
         return messageFromError(cacheError);
@@ -77,16 +81,30 @@ export function useCloudenceWorkspace() {
   );
 
   const refreshData = useCallback(
-    (force: boolean, signal?: AbortSignal): Promise<boolean> => {
-      if (!userId || isOfflineRef.current) return Promise.resolve(false);
-      if (refreshPromiseRef.current) return refreshPromiseRef.current;
+    function refreshWorkspace(force: boolean, signal?: AbortSignal): Promise<boolean> {
+      if (!userId || isOfflineRef.current || signal?.aborted) return Promise.resolve(false);
+      if (cacheReadyForUserRef.current !== userId) return Promise.resolve(false);
+      if (refreshPromiseRef.current) {
+        if (!force) return refreshPromiseRef.current;
+        if (forcedRefreshRef.current) return forcedRefreshRef.current;
+        // A purchase or mutation must refresh AFTER an already-running read.
+        const queued = refreshPromiseRef.current.then(() => {
+          if (forcedRefreshRef.current === queued) forcedRefreshRef.current = null;
+          return refreshWorkspace(true, signal);
+        }).finally(() => {
+          if (forcedRefreshRef.current === queued) forcedRefreshRef.current = null;
+        });
+        forcedRefreshRef.current = queued;
+        return queued;
+      }
 
-      const shouldFetchFiles = force || filesCachedAtRef.current === 0;
-      const shouldFetchUsage = force || usageCachedAtRef.current === 0;
+      const shouldFetchFiles = force || !isCacheFresh(filesCachedAtRef.current, WORKSPACE_FRESH_MS);
+      const shouldFetchUsage = force || !isCacheFresh(usageCachedAtRef.current, WORKSPACE_FRESH_MS);
       if (!shouldFetchFiles && !shouldFetchUsage)
         return Promise.resolve(true);
 
       const requestController = new AbortController();
+      const generation = accountCacheGeneration(userId);
       activeRequestRef.current = requestController;
       const requestSignal = signal ?? requestController.signal;
       if (filesCachedAtRef.current === 0) setIsLoading(true);
@@ -105,7 +123,7 @@ export function useCloudenceWorkspace() {
               : Promise.resolve(null),
           ]);
 
-          if (requestSignal.aborted) return false;
+          if (requestSignal.aborted || generation !== accountCacheGeneration(userId)) return false;
           if (filesResult.status === "fulfilled" && filesResult.value) {
             const nextFiles = filesResult.value;
             filesRef.current = nextFiles;
@@ -119,6 +137,7 @@ export function useCloudenceWorkspace() {
             failures.push(`Files: ${messageFromError(filesResult.reason)}`);
           }
 
+          if (requestSignal.aborted || generation !== accountCacheGeneration(userId)) return false;
           if (usageResult.status === "fulfilled" && usageResult.value) {
             setUsage(usageResult.value);
             setDataUserId(userId);
@@ -128,6 +147,7 @@ export function useCloudenceWorkspace() {
             failures.push(`Storage: ${messageFromError(usageResult.reason)}`);
           }
 
+          if (requestSignal.aborted || generation !== accountCacheGeneration(userId)) return false;
           setError(failures.length ? failures.join(" ") : null);
           return failures.length === 0;
         } catch (refreshError) {
@@ -160,8 +180,11 @@ export function useCloudenceWorkspace() {
   useEffect(() => {
     if (!userId) {
       activeRequestRef.current?.abort();
+      refreshPromiseRef.current = null;
+      forcedRefreshRef.current = null;
       const previousUserId = previousUserIdRef.current;
       previousUserIdRef.current = null;
+      cacheReadyForUserRef.current = null;
       filesRef.current = [];
       recentFilesRef.current = [];
       filesCachedAtRef.current = 0;
@@ -173,7 +196,7 @@ export function useCloudenceWorkspace() {
       setError(null);
       setIsLoading(false);
       if (previousUserId) {
-        void clearUserMetadataCache(previousUserId).catch(
+        void clearAccountCaches(previousUserId).catch(
           (cacheError: unknown) => {
             console.error(
               "Could not clear the signed-out Cloudence cache.",
@@ -187,7 +210,7 @@ export function useCloudenceWorkspace() {
 
     const previousUserId = previousUserIdRef.current;
     if (previousUserId && previousUserId !== userId) {
-      void clearUserMetadataCache(previousUserId).catch(
+      void clearAccountCaches(previousUserId).catch(
         (cacheError: unknown) => {
           console.error(
             "Could not clear the previous account cache.",
@@ -197,10 +220,13 @@ export function useCloudenceWorkspace() {
       );
     }
     previousUserIdRef.current = userId;
+    cacheReadyForUserRef.current = null;
 
     let cancelled = false;
     const controller = new AbortController();
     activeRequestRef.current?.abort();
+    refreshPromiseRef.current = null;
+    forcedRefreshRef.current = null;
     activeRequestRef.current = controller;
     filesRef.current = [];
     recentFilesRef.current = [];
@@ -245,11 +271,13 @@ export function useCloudenceWorkspace() {
         }
         setDataUserId(userId);
         setIsLoading(!cachedFiles);
+        cacheReadyForUserRef.current = userId;
         await refreshData(false, controller.signal);
         if (!cancelled) setIsLoading(false);
       } catch (cacheError) {
         if (!cancelled) {
           setDataUserId(userId);
+          cacheReadyForUserRef.current = userId;
           setError(
             `Cached workspace data could not be opened: ${messageFromError(cacheError)}`,
           );
@@ -283,15 +311,14 @@ export function useCloudenceWorkspace() {
       .catch((networkError: unknown) => {
         console.warn("Could not read the current network state.", networkError);
       });
-    const appStateSubscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") void refreshData(false);
-    });
 
     return () => {
       networkSubscription.remove();
-      appStateSubscription.remove();
     };
   }, [refreshData]);
+
+  const revalidate = useCallback(() => refreshData(false), [refreshData]);
+  useCacheRevalidation(revalidate, userId !== null);
 
   const invalidateUsage = useCallback(() => {
     usageCachedAtRef.current = 0;

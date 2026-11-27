@@ -2,7 +2,6 @@ import { apiRequest } from "./client";
 
 export const CLOUDENCE_PLAY_PRODUCTS = [
   "cloudence_pro_monthly",
-  "cloudence_storage_50gb_monthly",
 ] as const;
 
 export type CloudencePlayProductId =

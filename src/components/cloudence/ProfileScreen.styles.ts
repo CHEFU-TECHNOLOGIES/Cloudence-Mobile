@@ -15,8 +15,6 @@ export const profileStyles = StyleSheet.create({
     },
     versionText: {
         alignSelf: "center",
-        marginTop: 8,
-        marginBottom: 10,
         fontSize: 11,
         color: theme.colors.secondaryText,
         fontWeight: "500",
@@ -238,7 +236,7 @@ export const profileStyles = StyleSheet.create({
         borderColor: theme.colors.border,
         marginBottom: 16,
     },
-    legalSectionTitle: {
+    sectionTitle: {
         fontSize: 14,
         fontWeight: "700",
         color: theme.colors.text,

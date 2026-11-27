@@ -13,22 +13,16 @@ import {
 import { useSession } from "../auth/SessionContext";
 import { useCloudenceData } from "../data/CloudenceDataProvider";
 import { useToast } from "../components/cloudence/ToastProvider";
+import { memoryListingCache, listingCachedAt, rememberListing } from "../lib/cache/sectionListingCache";
+import { accountCacheGeneration, isCacheFresh, WORKSPACE_FRESH_MS } from "../lib/cache/cachePolicy";
+import { useCacheRevalidation } from "./useCacheRevalidation";
+import { fetchSectionSnapshot } from "../lib/cache/sectionSnapshot";
+import { ApiError } from "../lib/api/client";
 
 const EMPTY_LISTING: SectionListing = {
   files: [],
   folders: [],
 };
-const memoryListingCache = new Map<string, SectionListing>();
-const MAX_MEMORY_LISTINGS = 20;
-
-function rememberListing(key: string, listing: SectionListing) {
-  memoryListingCache.delete(key);
-  memoryListingCache.set(key, listing);
-  if (memoryListingCache.size > MAX_MEMORY_LISTINGS) {
-    const oldestKey = memoryListingCache.keys().next().value;
-    if (oldestKey) memoryListingCache.delete(oldestKey);
-  }
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -108,7 +102,10 @@ export function useSectionListing(
   const load = useCallback(
     async (force = false, signal?: AbortSignal) => {
       if (!section || !userId || !cacheKey) return false;
+      if (loadingMoreRef.current) return false;
       if (requestRef.current) return requestRef.current;
+      const generation = accountCacheGeneration(userId);
+      const stillCurrent = () => !signal?.aborted && generation === accountCacheGeneration(userId);
 
       const request = (async (): Promise<boolean> => {
         try {
@@ -120,19 +117,19 @@ export function useSectionListing(
               setStoredKey(stateKey);
               setListing(memoryCached);
               setError(null);
-              return true;
+              if (isOffline || isCacheFresh(listingCachedAt.get(stateKey) ?? 0, WORKSPACE_FRESH_MS)) return true;
             }
 
-            const cached = await readMetadataCache(userId, cacheKey);
-            if (signal?.aborted) return true;
+            const cached = memoryCached ? null : await readMetadataCache(userId, cacheKey);
+            if (!stillCurrent()) return false;
             if (cached && isCachedListing(cached.payload)) {
-              rememberListing(stateKey, cached.payload);
+              rememberListing(stateKey, cached.payload, cached.cachedAt);
               storedKeyRef.current = stateKey;
               hasListingRef.current = true;
               setStoredKey(stateKey);
               setListing(cached.payload);
               setError(null);
-              return true;
+              if (isOffline || isCacheFresh(cached.cachedAt, WORKSPACE_FRESH_MS)) return true;
             }
           }
 
@@ -146,14 +143,12 @@ export function useSectionListing(
           }
           setIsRefreshing(true);
           const accessToken = await getAccessToken();
-          const nextListing = await listSectionListing(
-            accessToken,
-            section,
-            folderId,
-            0,
-            signal,
+          const nextListing = await fetchSectionSnapshot(
+            (offset) => listSectionListing(accessToken, section, folderId, offset, signal),
+            memoryListingCache.get(stateKey)?.files.length ?? 0,
+            folderId !== null,
           );
-          if (signal?.aborted) return true;
+          if (!stillCurrent()) return false;
 
           rememberListing(stateKey, nextListing);
           storedKeyRef.current = stateKey;
@@ -168,7 +163,12 @@ export function useSectionListing(
           );
           return true;
         } catch (loadError) {
-          if (!signal?.aborted) {
+          if (stillCurrent()) {
+            if (loadError instanceof ApiError && [401, 403, 404].includes(loadError.status)) {
+              rememberListing(stateKey, EMPTY_LISTING, 0);
+              setListing(EMPTY_LISTING);
+              await writeMetadataCache(userId, cacheKey, EMPTY_LISTING, 0).catch(() => undefined);
+            }
             setError(
               loadError instanceof Error
                 ? loadError.message
@@ -205,6 +205,9 @@ export function useSectionListing(
     };
   }, [load]);
 
+  const revalidate = useCallback(() => load(false, controllerRef.current?.signal), [load]);
+  useCacheRevalidation(revalidate, Boolean(section && userId && !isOffline));
+
   const loadMore = useCallback(async () => {
     if (isOffline && section && folderId && listing.nextOffset !== undefined) {
       showToast({
@@ -219,6 +222,7 @@ export function useSectionListing(
       !folderId ||
       !userId ||
       isOffline ||
+      requestRef.current ||
       listing.nextOffset === undefined ||
       loadingMoreRef.current
     ) {
@@ -226,6 +230,7 @@ export function useSectionListing(
     }
 
     loadingMoreRef.current = true;
+    const generation = accountCacheGeneration(userId);
     const controller = new AbortController();
     controllerRef.current?.abort();
     controllerRef.current = controller;
@@ -239,7 +244,7 @@ export function useSectionListing(
         listing.nextOffset,
         controller.signal,
       );
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || generation !== accountCacheGeneration(userId)) return;
 
       const combined: SectionListing = {
         files: [

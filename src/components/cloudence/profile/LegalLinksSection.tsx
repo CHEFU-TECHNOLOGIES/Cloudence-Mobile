@@ -34,7 +34,7 @@ export default function LegalLinksSection() {
 
     return (
         <View>
-            <Text style={styles.legalSectionTitle}>Legal</Text>
+            <Text accessibilityRole="header" style={styles.sectionTitle}>Legal</Text>
             <View style={styles.legalLinksCard}>
                 {legalLinks.map(({ label, url }, index) => (
                     <Pressable

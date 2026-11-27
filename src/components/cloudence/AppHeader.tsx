@@ -4,9 +4,9 @@ import {
   View,
   Text,
   StyleSheet,
-  Image,
   useWindowDimensions,
 } from "react-native";
+import { Image } from "expo-image";
 import { Plus, Bell } from "lucide-react-native";
 import { theme } from "../../constants/theme";
 import { useSession } from "../../auth/SessionContext";
@@ -92,8 +92,9 @@ export default function AppHeader({
                 >
                     {user?.avatar ? (
                         <Image
-                            source={{ uri: user.avatar }}
+                            source={{ uri: user.avatar, cacheKey: `${user.id}:avatar:${user.avatar}` }}
                             style={styles.avatar}
+                            cachePolicy="memory-disk"
                         />
                     ) : (
                         <View style={styles.avatarFallback}>

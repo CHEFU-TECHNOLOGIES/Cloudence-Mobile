@@ -37,6 +37,7 @@ export default function ProfileSettingsSection({
 
     return (
         <>
+            <Text accessibilityRole="header" style={styles.sectionTitle}>Workspace</Text>
             <View style={styles.optionsCard}>
                 {settingsOptions.map(({ id, title, subtitle, onPress }, index) => (
                     <Pressable
@@ -65,6 +66,7 @@ export default function ProfileSettingsSection({
 
             <LegalLinksSection />
 
+            <Text accessibilityRole="header" style={styles.sectionTitle}>Account</Text>
             <View style={styles.accountActionsCard}>
                 <Pressable
                     accessibilityRole="button"

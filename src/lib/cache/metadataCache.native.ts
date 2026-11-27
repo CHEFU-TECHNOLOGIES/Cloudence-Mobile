@@ -1,6 +1,7 @@
 import * as Crypto from "expo-crypto";
 import * as SecureStore from "expo-secure-store";
 import * as SQLite from "expo-sqlite";
+import { accountCacheGeneration } from "./cachePolicy";
 
 const DATABASE_PREFIX = "cloudence-cache-";
 const CACHE_SCHEMA_VERSION = 1;
@@ -105,7 +106,9 @@ export async function writeMetadataCache(
   payload: unknown,
   cachedAt = Date.now(),
 ) {
+  const generation = accountCacheGeneration(userId);
   const database = await getAccountCache(userId);
+  if (generation !== accountCacheGeneration(userId)) return;
   await database.runAsync(
     `INSERT INTO metadata_cache (cache_key, payload, cached_at, schema_version)
      VALUES (?, ?, ?, ?)

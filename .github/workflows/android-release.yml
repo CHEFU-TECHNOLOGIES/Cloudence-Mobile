@@ -60,14 +60,6 @@ jobs:
             exit 1
           fi
 
-          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
-            app_version="$(node -p "require('./app.json').expo.version")"
-            if [[ "$GITHUB_REF_NAME" != "v$app_version" ]]; then
-              echo "::error::Release tag $GITHUB_REF_NAME must match app.json version v$app_version."
-              exit 1
-            fi
-          fi
-
       - name: Set up Java
         uses: actions/setup-java@v6
         with:
@@ -80,7 +72,7 @@ jobs:
       - name: Check TypeScript
         run: npx tsc --noEmit
 
-      - name: Set Android version code
+      - name: Set release version and Android version code
         env:
           ANDROID_VERSION_CODE: ${{ github.run_number }}
         run: |
@@ -91,8 +83,29 @@ jobs:
           if (!Number.isSafeInteger(versionCode) || versionCode < 1) {
             throw new Error("GitHub run number is not a valid Android version code.");
           }
+          const versionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+          const baseVersion = config.expo.version;
+          if (!versionPattern.test(baseVersion)) {
+            throw new Error("app.json version must use major.minor.patch format.");
+          }
+          if (process.env.GITHUB_REF_TYPE === "tag") {
+            const tagVersion = (process.env.GITHUB_REF_NAME ?? "").replace(/^v/, "");
+            if (!process.env.GITHUB_REF_NAME?.startsWith("v") || !versionPattern.test(tagVersion)) {
+              throw new Error("Release tags must use vMAJOR.MINOR.PATCH format.");
+            }
+            config.expo.version = tagVersion;
+          } else {
+            // The run number keeps advancing even though CI does not commit app.json.
+            const [major, minor, patch] = baseVersion.split(".");
+            const nextPatch = Number(patch) + versionCode;
+            if (!Number.isSafeInteger(nextPatch)) {
+              throw new Error("Generated patch version exceeds the safe integer range.");
+            }
+            config.expo.version = `${major}.${minor}.${nextPatch}`;
+          }
           config.expo.android.versionCode = versionCode;
           fs.writeFileSync("app.json", `${JSON.stringify(config, null, 2)}\n`);
+          console.log(`Release version: ${config.expo.version}; Android version code: ${versionCode}`);
           NODE
 
       - name: Generate Android project
@@ -209,6 +222,7 @@ jobs:
           [Download signed APK and AAB artifacts]($ARTIFACT_URL)
 
           Install the APK directly on Android or upload the AAB to Google Play.
-          A tag matching the app version also publishes both files to GitHub Releases.
+          Tag builds use the tag version and publish both files to GitHub Releases.
+          Manual builds add the workflow run number to the patch version in app.json.
           Android version code: $GITHUB_RUN_NUMBER.
           EOF

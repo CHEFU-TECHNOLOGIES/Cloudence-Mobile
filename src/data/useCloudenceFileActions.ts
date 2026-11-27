@@ -410,6 +410,7 @@ export function useCloudenceFileActions({
             onProgress?.(progress);
           },
           controller.signal,
+          userId ?? undefined,
         );
       } finally {
         if (downloadControllerRef.current === controller) {
@@ -419,7 +420,7 @@ export function useCloudenceFileActions({
         setDownloadProgress(null);
       }
     },
-    [getAccessToken],
+    [getAccessToken, userId],
   );
 
   const cancelDownload = useCallback(() => {
